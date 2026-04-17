@@ -1,0 +1,16 @@
+[project]
+name = "freight-rate-intelligence"
+version = "0.1.0"
+description = "AI-powered freight rate comparison with hidden-charge detection"
+authors = [{ name = "Shashank Gupta" }]
+requires-python = ">=3.11,<3.13"
+readme = "README.md"
+
+dependencies = [
+  "requests>=2.31",
+  "python-dotenv>=1.0",
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
