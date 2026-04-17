@@ -11,6 +11,14 @@ dependencies = [
   "python-dotenv>=1.0",
 ]
 
+[tool.uv]
+dev-dependencies = []
+
+[tool.hatch.build.targets.wheel]
+only-packages = true
+packages = ["src/freight_rate_intelligence"]
+force-include = {}
+
 [build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"

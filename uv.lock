@@ -67,6 +67,9 @@ requires-dist = [
     { name = "requests", specifier = ">=2.31" },
 ]
 
+[package.metadata.requires-dev]
+dev = []
+
 [[package]]
 name = "idna"
 version = "3.11"
