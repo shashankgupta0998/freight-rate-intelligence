@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtual env
+.venv/
+
+# Env vars
+.env
+
+# Generated artifacts
+knowledge_base/doc_registry.json
+*.db
+*.sqlite3
+
+# Streamlit Cloud export (regenerated from uv.lock; not source of truth)
+requirements.txt
+
+# OS
+.DS_Store
