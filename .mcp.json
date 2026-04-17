@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "pageindex": {
+      "type": "http",
+      "url": "https://api.pageindex.ai/mcp",
+      "headers": { "Authorization": "Bearer ${PAGEINDEX_API_KEY}" }
+    }
+  }
+}
