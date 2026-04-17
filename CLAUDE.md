@@ -8,8 +8,8 @@ AI-powered web app: given product + gross weight + dimensions + origin + destina
 
 ---
 
-## Current state (2026-04-16)
-Pre-scaffold: only PRD + CLAUDE.md exist. No `app.py`, `agents/`, `tools/`, `knowledge_base/`, or `tests/` on disk yet. Follow the **Build order** section when creating files — do not skip phases.
+## Current state (2026-04-17)
+Phase 1 complete: repo is git-initialised, `uv` manages deps (hatchling backend), `.env.example` / `.gitignore` / `.mcp.json` in place, and `knowledge_base/ingest.py` has uploaded the three seed PDFs to PageIndex (registry `knowledge_base/doc_registry.json` has 3 entries with `doc_id` + `sha256`, idempotency verified). Phases 2–6 (scraper, agents, UI, tests, deploy) remain. Follow the **Build order** section.
 
 > **Source of truth:** where CLAUDE.md and `freight-rate-intelligence-PRD.md` diverge, CLAUDE.md wins. Notably, the LLM fallback chain (Groq → OpenAI → Gemini) supersedes the PRD's Groq-only spec.
 
@@ -186,12 +186,14 @@ cbm = (length_cm * width_cm * height_cm) / 1_000_000
 
 **Never** fetch the whole document — always use tight page ranges from step 2.
 
+**Env-var loading caveat:** Claude Code expands `${PAGEINDEX_API_KEY}` in the MCP config at CLI launch, reading from the shell environment — it does NOT auto-load from the project `.env`. Export the key in your shell (or use direnv / shell-rc integration) before starting a session. The `ingest.py` script has its own `load_dotenv()` and works standalone.
+
 ---
 
 ## Knowledge base files
 
 - `knowledge_base/tariffs/` — seed PDFs (IATA tariff, Incoterms 2020, surcharge bulletins)
-- `knowledge_base/doc_registry.json` — gitignored, rebuilt by ingest.py
+- `knowledge_base/doc_registry.json` — gitignored; maps `{filename: {doc_id, sha256}}`. Updated in place by `ingest.py` (idempotent by SHA-256 content hash — unchanged PDFs are skipped on re-run; edited PDFs re-upload)
 - `knowledge_base/charge_patterns.json` — direct JSON load (NOT in PageIndex), structure:
 ```json
 {
