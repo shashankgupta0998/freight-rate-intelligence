@@ -127,7 +127,7 @@ All downstream agents receive `chargeable_weight_kg`, not gross weight.
   2. `get_document_structure(docName)` → returns hierarchical TOC with page ranges
   3. `get_page_content(docName, pages="8-11")` → fetches only the relevant pages
 - Used by: hidden charge agent (surcharge bulletins), summarizer (Incoterms), rate comparator (tariff tables)
-- MCP config in `.claude/settings.json` — shared between Claude Code dev sessions and the Streamlit app
+- MCP config in `.mcp.json` at project root (checked into git; shared with team) — used by Claude Code dev sessions; the Streamlit app uses PageIndex's Python SDK / HTTP directly, not the MCP protocol
 
 ### F6 — Rate Comparison & Recommendation (Agent)
 - Rank quotes by: estimated total cost = base_price + expected_surcharges (derived from trust_score)

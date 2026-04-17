@@ -157,7 +157,7 @@ cbm = (length_cm * width_cm * height_cm) / 1_000_000
 
 ## PageIndex MCP — RAG retrieval
 
-**MCP config** (add to `.claude/settings.json` during Phase 1 — not yet present; current file only contains `enabledPlugins`):
+**MCP config** (lives in `.mcp.json` at the project root, added in Phase 1 — `.claude/settings.json` does NOT accept `mcpServers`; per-project MCP servers always go in `.mcp.json`):
 ```json
 {
   "mcpServers": {
@@ -279,7 +279,7 @@ Files under `.claude/commands/` do not exist yet. Create them during Phase 1 sca
    - `.gitignore` (covers `.env`, `doc_registry.json`, `__pycache__`, `.venv/`, `*.db`; `uv.lock` IS committed)
    - `.env.example`
    - `pyproject.toml` (Python 3.11+, deps) + `uv.lock`
-   - MCP `mcpServers` block in `.claude/settings.json`
+   - `.mcp.json` at project root with `mcpServers` block
    - `knowledge_base/ingest.py` + upload PDFs
 2. `tools/scraper.py` + `tools/cache.py` with fixtures
 3. All 4 agents + LangChain wiring

@@ -637,17 +637,7 @@ Replace with:
 Phase 1 complete: repo is git-initialised, `uv` manages deps, `.env.example`/`.gitignore`/MCP config in place, and `knowledge_base/ingest.py` has uploaded the three seed PDFs to PageIndex. Phases 2–6 (scraper, agents, UI, tests, deploy) remain. Follow the **Build order** section.
 ```
 
-- [ ] **Step 2: Update MCP config heading (no longer "not yet present")**
-
-Find:
-```markdown
-**MCP config** (add to `.claude/settings.json` during Phase 1 — not yet present; current file only contains `enabledPlugins`):
-```
-
-Replace with:
-```markdown
-**MCP config** (lives in `.claude/settings.json`, added in Phase 1):
-```
+- [x] **Step 2: Update MCP config heading** — *Already done by controller during Task 5 repair. The plan originally specified `.claude/settings.json` for MCP config, but authoritative Claude Code guidance confirms project-scoped `mcpServers` live in `.mcp.json` at project root (not `.claude/settings.json`). CLAUDE.md was updated to reflect this. SKIP this step.*
 
 - [ ] **Step 3: Update Knowledge base files section for new registry schema**
 
