@@ -8,18 +8,27 @@ AI-powered web app: given product + gross weight + dimensions + origin + destina
 
 ---
 
-## Current state (2026-04-18)
-Phase 2 complete: `tools/scraper.py` normalises three hand-crafted HTML fixtures (freightos / icontainers / searates, Delhi→Rotterdam 200 kg) into 10 `ScrapedRate` dicts via three distinct parsers; `tools/cache.py` provides a SQLite rate cache with 6 h read-time TTL; scraper+cache compose cleanly (MISS → scrape → PUT → HIT round-trip verified). Phase 1 deliverables remain in place (`knowledge_base/ingest.py`, PageIndex MCP via `.mcp.json`). Phases 3–6 (agents, UI, tests, deploy) remain. Follow the **Build order** section.
+## Current state (2026-04-19)
+Phase 3 complete: four LangChain 1.x `Runnable`-based agents (`agents/router.py`, `agents/hidden_charge.py`, `agents/rate_comparator.py`, `agents/summarizer.py`) composed by `pipeline.py` (`run_pipeline(ShipmentInput) -> RecommendationResult`). `tools/llm_router.py` exposes `get_llm()` backed by a LiteLLM Router with Groq → OpenAI → Gemini fallback. `tools/validator.py` + `knowledge_base/charge_patterns.json` handle booking-site + red-flag checks. `tools/pageindex_client.py` provides runtime-optional RAG (default off via `USE_PAGEINDEX_RUNTIME=false`). Router + rate_comparator are rule-based with Runnable wrappers for A2A uniformity; hidden_charge + summarizer make real LLM calls. End-to-end verified: Delhi→Rotterdam 200kg returns 10 ranked rates (Emirates SkyCargo wins on trust-adjusted total at $908.38) with a plain-English recommendation. Phase 2 + Phase 1 deliverables remain in place. Phases 4–6 (Streamlit UI, tests, deploy) remain.
 
-**Phase 2 notes:**
+**Phase 2 + 3 notes:**
 - `LIVE_SCRAPING=false` is both default and production in v1. `LIVE_SCRAPING=true` raises `NotImplementedError` from `tools.scraper.fetch_site`.
+- `USE_PAGEINDEX_RUNTIME=false` is the default; set to `true` to let the hidden-charge agent fetch surcharge-bulletin context from PageIndex's `/chat/completions` endpoint for each rate. `charge_patterns.json` is always the primary data source; PageIndex is additive context only.
 - Cache key is `(origin, destination, query_date)` per CLAUDE.md — known to be too coarse (ignores weight + mode); acceptable for single-route demo, tighten to `(origin, destination, date, mode, weight_bucket)` when multi-route support lands.
+- Pipeline makes ~12 LLM calls per request (1 router + N hidden-charge + 1 summarizer, where N = scraped rate count). Worst-case ~6 s serial latency. Phase 5 optimisations: parallelise or batch hidden-charge.
 
 **Phase 5 backlog (non-blocking, surfaced by reviewers):**
 - `tools/cache.py`: `clear_cache` has a redundant `_connect().close()` line that leaks on a failing reconnect — drop it; table is recreated lazily on next call.
 - `tools/cache.py`: error logs for unparseable `cached_at` / `rates_json` should include origin/destination in the `%s->%s` format used elsewhere.
 - `tools/scraper.py`: `_parse_days_from_text` reuses `_PRICE_RE` but doesn't strip commas; `"2,000 days"` raises `ValueError` (silently drops the row via the per-parser except). Use a dedicated `r"\d+"` or strip commas.
 - `tools/scraper.py`: `Query.origin` / `destination` / `mode` are unused in v1 (reserved for live mode) — document with a one-line note or defer trimming until live mode is wired.
+- `pipeline.py`: hidden-charge LLM calls are serial (~0.5s × N rates). Parallelise via `ThreadPoolExecutor` or batch all N cards into one LLM call for ~3× latency reduction.
+- `agents/rate_comparator.py`: no LLM call; the `Runnable` wrapper is pure A2A ceremony. If A2A never ships, collapse to a plain function.
+- `agents/summarizer.py`: `payload["shipment"]` is an unguarded `[]` access while `router_reason` / `ranked_rates` use `.get(default)` — inconsistent. Either make all three defaults-based or raise a typed error.
+- `agents/summarizer.py`: no length guard on `recommendation`; a 10KB LLM response is schema-valid but blows up the Streamlit card. Consider `Field(max_length=2000)` or log a warning over N chars.
+- `agents/summarizer.py`: empty-string `recommendation` silently accepted; use `Field(min_length=1)` or fall back to canned message.
+- `agents/summarizer.py`: output isn't streamed; Phase 4 Streamlit can add streaming if UX demands.
+- `agents/summarizer.py`: optional `query_pageindex(incoterms_doc_id, ...)` call for Incoterms-aware advice — hook exists in design, not wired.
 
 > **Source of truth:** where CLAUDE.md and `freight-rate-intelligence-PRD.md` diverge, CLAUDE.md wins. Notably, the LLM fallback chain (Groq → OpenAI → Gemini) supersedes the PRD's Groq-only spec.
 
