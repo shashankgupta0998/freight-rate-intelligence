@@ -113,6 +113,7 @@ def parse_freightos(html: str) -> list[dict]:
                 "transit_days": transit,
                 "booking_url": booking_url,
                 "mode": mode,
+                "_card_html": str(card),
             })
         except (AttributeError, TypeError, ValueError, KeyError) as e:
             logger.debug("freightos: skipped malformed card: %s", e)
@@ -146,6 +147,7 @@ def parse_icontainers(html: str) -> list[dict]:
                 "transit_days": transit,
                 "booking_url": booking_url,
                 "mode": mode,
+                "_card_html": str(row),
             })
         except (AttributeError, TypeError, ValueError, KeyError) as e:
             logger.debug("icontainers: skipped malformed row: %s", e)
@@ -173,6 +175,7 @@ def parse_searates(html: str) -> list[dict]:
                 "transit_days": transit,
                 "booking_url": booking_url,
                 "mode": mode,
+                "_card_html": str(article),
             })
         except (AttributeError, TypeError, ValueError, KeyError) as e:
             logger.debug("searates: skipped malformed article: %s", e)
