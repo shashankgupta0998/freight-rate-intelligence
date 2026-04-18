@@ -1,0 +1,32 @@
+{
+  "red_flags": [
+    "base price shown without itemised surcharges",
+    "fuel surcharge (FSC) not disclosed upfront",
+    "peak season surcharge (PSS) absent from the quote",
+    "destination handling charge (DHC / THC) not itemised",
+    "chassis fee or terminal drop fee unlisted for sea freight",
+    "security / ISPS surcharge missing from air freight quote",
+    "documentation fee above $75 without justification",
+    "bunker adjustment factor (BAF) or currency adjustment factor (CAF) not shown for sea"
+  ],
+  "mode_specific_red_flags": {
+    "air_freight": [
+      "fuel surcharge (FSC) not disclosed upfront",
+      "security / ISPS surcharge missing from air freight quote"
+    ],
+    "sea_freight": [
+      "chassis fee or terminal drop fee unlisted for sea freight",
+      "bunker adjustment factor (BAF) or currency adjustment factor (CAF) not shown for sea"
+    ]
+  },
+  "verified_sites": [
+    "freightos.com",
+    "ship.freightos.com",
+    "flexport.com",
+    "dhl.com",
+    "maersk.com",
+    "icontainers.com",
+    "searates.com"
+  ],
+  "flagged_sites": []
+}
