@@ -11,6 +11,11 @@ dependencies = [
   "python-dotenv>=1.0",
   "beautifulsoup4>=4.12",
   "lxml>=5.2",
+  "langchain>=0.3",
+  "langchain-core>=0.3",
+  "langchain-litellm>=0.1",
+  "litellm>=1.50",
+  "pydantic>=2.7",
 ]
 
 [tool.uv]
