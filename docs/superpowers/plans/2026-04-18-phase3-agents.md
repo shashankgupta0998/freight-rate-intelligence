@@ -2,7 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the intelligence layer — four LangChain `AgentExecutor`-wrapped agents (router, hidden-charge, rate-comparator, summarizer) orchestrated by a single `run_pipeline(ShipmentInput) -> RecommendationResult` function, with LiteLLM managing the Groq → OpenAI → Gemini fallback chain.
+**Goal:** Build the intelligence layer — four LangChain `Runnable`-based agents (router, hidden-charge, rate-comparator, summarizer) orchestrated by a single `run_pipeline(ShipmentInput) -> RecommendationResult` function, with LiteLLM managing the Groq → OpenAI → Gemini fallback chain.
+
+> **Note (post-spec discovery):** LangChain 1.x removed the `AgentExecutor` class. The spec's original phrasing referred to `AgentExecutor`-wrapped agents, but in LangChain 1.x the equivalent agent-object interface is `Runnable` (same stable `.invoke(input) -> output` protocol; what A2A exposure needs). All four agents use `Runnable` directly. The user-facing contract is unchanged.
 
 **Architecture:** `tools/llm_router.py` exposes `get_llm()` — the single LLM entry point; all four agents route through it. `tools/validator.py` does booking-site checks against `knowledge_base/charge_patterns.json`. `tools/pageindex_client.py` adds runtime-optional RAG (default off). Each agent is a LangChain `AgentExecutor` with a consistent `.invoke({"input": ...}) -> dict` surface for future A2A exposure. Router and rate-comparator use Python rules for their core logic; LLM is only invoked for prose/judgment. `pipeline.py` at project root chains everything linearly with continue-on-error semantics per rate.
 
@@ -10,7 +12,7 @@
 
 **Source spec:** `docs/superpowers/specs/2026-04-18-phase3-agents-design.md`
 
-**Tests:** Deferred to Phase 5 per the approved spec and project build order. Each task uses manual verification commands (`uv run python -c ...`) with expected output. Every function is factored to be mockable (`get_llm` is a single patchable entry point; agents are builder functions returning `AgentExecutor` instances).
+**Tests:** Deferred to Phase 5 per the approved spec and project build order. Each task uses manual verification commands (`uv run python -c ...`) with expected output. Every function is factored to be mockable (`get_llm` is a single patchable entry point; agents are builder functions returning `Runnable` instances).
 
 **Pre-flight:** `uv` is installed, Phase 1 + Phase 2 deliverables are on disk, `.env` has real keys for `GROQ_API_KEY` (required), `OPENAI_API_KEY`, `GEMINI_API_KEY`, `PAGEINDEX_API_KEY`.
 
@@ -530,17 +532,19 @@ Create `agents/router.py` with EXACTLY this content:
 """Router agent — classifies shipment mode from chargeable weight.
 
 Mode is decided by deterministic thresholds (CLAUDE.md); LLM generates
-only the user-facing reason text. Wrapped in an AgentExecutor for A2A
-uniformity (all four agents share the same .invoke() shape).
+only the user-facing reason text. Returned as a LangChain Runnable for
+A2A uniformity (all four agents share the same .invoke() shape).
+
+Note: LangChain 1.x removed AgentExecutor; Runnable is the equivalent
+agent-object interface with a stable .invoke(input) -> output protocol.
 """
 from __future__ import annotations
 
 import logging
 from typing import Any
 
-from langchain.agents import AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import Runnable, RunnableLambda
+from langchain_core.runnables import Runnable
 from pydantic import BaseModel, Field
 
 from tools.llm_router import get_llm
@@ -580,7 +584,7 @@ _PROMPT = ChatPromptTemplate.from_messages([
 
 
 class _RouterRunnable(Runnable):
-    """Internal runnable used by the AgentExecutor-compatible wrapper."""
+    """Internal Runnable wrapping deterministic mode classification + LLM reason."""
 
     def invoke(self, inputs: dict, config: Any = None, **kwargs) -> dict:
         shipment = inputs["input"] if "input" in inputs else inputs
@@ -600,14 +604,12 @@ class _RouterRunnable(Runnable):
         return {"mode": mode, "reason": result.reason}
 
 
-def build_router_agent() -> AgentExecutor:
-    """Return an AgentExecutor-compatible object for the router.
+def build_router_agent() -> Runnable:
+    """Return a LangChain Runnable for the router agent.
 
-    AgentExecutor expects a tool-using agent; for the router we wrap a
-    deterministic + LLM-prose runnable in a thin shim that exposes the
-    same .invoke() surface. For v1 A2A uniformity this is sufficient.
+    The Runnable exposes .invoke({"input": shipment_dict}) -> {"mode", "reason"}.
+    This shape is consistent across all four Phase-3 agents (A2A-ready).
     """
-    # Bypass AgentExecutor's tool-loop machinery; expose same interface.
     return _RouterRunnable()
 ```
 

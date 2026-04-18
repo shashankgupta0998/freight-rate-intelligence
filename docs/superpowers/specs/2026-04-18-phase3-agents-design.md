@@ -11,7 +11,9 @@
 
 Build the intelligence layer. Four LangChain `AgentExecutor`-wrapped agents orchestrated by a single `run_pipeline(shipment_input) -> RecommendationResult` function. A `tools/llm_router.py` funnels every LLM call through a LiteLLM Router that cascades Groq → OpenAI → Gemini on `RateLimitError`. A validator module checks booking-site legitimacy against a curated `charge_patterns.json`. An optional `tools/pageindex_client.py` provides runtime RAG against the surcharge bulletin when `USE_PAGEINDEX_RUNTIME=true`.
 
-Portfolio story: production-shaped multi-agent pipeline where agents are proper `AgentExecutor` objects (A2A-ready), LLM fallback is explicit, and deterministic decisions stay deterministic (mode classification, price math, ranking).
+Portfolio story: production-shaped multi-agent pipeline where agents are proper LangChain agent objects (A2A-ready), LLM fallback is explicit, and deterministic decisions stay deterministic (mode classification, price math, ranking).
+
+> **Post-spec note (2026-04-18):** LangChain 1.x removed the `AgentExecutor` class entirely. `Runnable` is the equivalent agent-object interface in v1.x — same stable `.invoke(input) -> output` protocol, same A2A-exposure story. This spec refers to `AgentExecutor` in several places because that was the v0.3 API; the implementation uses `Runnable` throughout. Design decisions D2 and D9 (below) still hold as written — the class name changes, the architectural intent doesn't.
 
 ## 2. Scope
 

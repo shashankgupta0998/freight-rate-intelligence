@@ -78,7 +78,7 @@ uv export --no-hashes > requirements.txt
 ## Stack
 - **LLM:** LiteLLM fallback chain — Groq (`llama-3.3-70b-versatile`) → OpenAI (`gpt-4o-mini`) → Gemini (`gemini-1.5-flash`)
 - **LLM router:** `tools/llm_router.py` — all agents call `get_llm()`, never instantiate `ChatGroq` directly
-- **Orchestration:** LangChain AgentExecutor
+- **Orchestration:** LangChain 1.x `Runnable`-based agents (AgentExecutor was removed in v1.x — `Runnable` is the equivalent agent-object interface, same `.invoke(input) -> output` protocol)
 - **RAG:** PageIndex MCP — vectorless, reasoning-based (no ChromaDB, no embeddings)
 - **Scraping:** BeautifulSoup + requests; Playwright for JS-heavy pages
 - **Cache:** SQLite — rate cache TTL 6h, keyed by `(origin, destination, date)`

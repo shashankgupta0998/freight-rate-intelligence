@@ -154,7 +154,7 @@ All downstream agents receive `chargeable_weight_kg`, not gross weight.
 | Layer | Component | Technology |
 |-------|-----------|------------|
 | Frontend | Web app | Streamlit |
-| Orchestration | Agent executor | LangChain AgentExecutor |
+| Orchestration | Agent executor | LangChain 1.x `Runnable`-based agents (AgentExecutor was removed in v1.x — `Runnable` is the equivalent agent-object interface) |
 | LLM | Inference | LiteLLM fallback — Groq (`llama-3.3-70b-versatile`) → OpenAI (`gpt-4o-mini`) → Gemini (`gemini-1.5-flash`) via `tools/llm_router.py` |
 | RAG | Vectorless retrieval | PageIndex MCP (cloud) |
 | Scraping | Live rate fetch | BeautifulSoup, requests, Playwright |
