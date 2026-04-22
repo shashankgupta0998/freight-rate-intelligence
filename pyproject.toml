@@ -16,10 +16,13 @@ dependencies = [
   "langchain-litellm>=0.1",
   "litellm>=1.50",
   "pydantic>=2.7",
+  "streamlit>=1.35",
 ]
 
 [tool.uv]
-dev-dependencies = []
+dev-dependencies = [
+  "pytest>=8.0",
+]
 
 [tool.hatch.build.targets.wheel]
 only-packages = true

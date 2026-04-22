@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
-from typing import TypedDict
+from typing import Callable, TypedDict
 
 from agents import (
     build_hidden_charge_agent,
@@ -43,14 +43,37 @@ class RecommendationResult(TypedDict):
     errors: list[str]
 
 
-def run_pipeline(shipment_input: dict) -> RecommendationResult:
+def _noop(_stage: str) -> None:
+    """Default progress callback — does nothing."""
+
+
+def run_pipeline(
+    shipment_input: dict,
+    *,
+    on_progress: Callable[[str], None] | None = None,
+) -> RecommendationResult:
+    """Run the freight-rate pipeline end-to-end.
+
+    on_progress is an optional UI-progress callback. It receives a string
+    stage marker at each pipeline phase:
+      - "classifying_mode"            (before router.invoke)
+      - "scraping"                    (before cache check / scrape)
+      - "hidden_charge:{i}/{total}"   (after each hidden-charge invoke)
+      - "ranking"                     (before rate_comparator.invoke)
+      - "writing_recommendation"      (before summarizer.invoke)
+      - "done"                        (just before return)
+    Default None => no-op (CLI / tests / A2A unchanged).
+    """
+    notify = on_progress or _noop
     errors: list[str] = []
 
     # Step 1: Router
+    notify("classifying_mode")
     router = build_router_agent()
     route = router.invoke({"input": shipment_input})
 
     # Steps 2 & 3: Cache then scrape
+    notify("scraping")
     today = date.today()
     cached = get_cached(
         shipment_input["origin"], shipment_input["destination"], today
@@ -76,7 +99,9 @@ def run_pipeline(shipment_input: dict) -> RecommendationResult:
     # Step 4: Hidden-charge scoring per rate
     hidden_charge = build_hidden_charge_agent()
     partial_scored: list[dict] = []
-    for rate in scraped:
+    total = len(scraped)
+    for i, rate in enumerate(scraped, 1):
+        notify(f"hidden_charge:{i}/{total}")
         try:
             result = hidden_charge.invoke({
                 "input": {
@@ -100,11 +125,13 @@ def run_pipeline(shipment_input: dict) -> RecommendationResult:
             )
 
     # Step 5: Rate-comparator
+    notify("ranking")
     comparator = build_rate_comparator_agent()
     ranked = comparator.invoke({"input": partial_scored})
 
     # Step 6: Summarizer
     if not ranked:
+        notify("done")
         return {
             "mode": route["mode"],
             "router_reason": route["reason"],
@@ -118,6 +145,7 @@ def run_pipeline(shipment_input: dict) -> RecommendationResult:
             "errors": errors,
         }
 
+    notify("writing_recommendation")
     summarizer = build_summarizer_agent()
     try:
         summary = summarizer.invoke({"input": {
@@ -131,6 +159,7 @@ def run_pipeline(shipment_input: dict) -> RecommendationResult:
         errors.append(f"summarizer failed: {e}")
         recommendation = ""
 
+    notify("done")
     return {
         "mode": route["mode"],
         "router_reason": route["reason"],
