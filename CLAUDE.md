@@ -8,8 +8,8 @@ AI-powered web app: given product + gross weight + dimensions + origin + destina
 
 ---
 
-## Current state (2026-04-19)
-Phase 3 complete: four LangChain 1.x `Runnable`-based agents (`agents/router.py`, `agents/hidden_charge.py`, `agents/rate_comparator.py`, `agents/summarizer.py`) composed by `pipeline.py` (`run_pipeline(ShipmentInput) -> RecommendationResult`). `tools/llm_router.py` exposes `get_llm()` backed by a LiteLLM Router with Groq → OpenAI → Gemini fallback. `tools/validator.py` + `knowledge_base/charge_patterns.json` handle booking-site + red-flag checks. `tools/pageindex_client.py` provides runtime-optional RAG (default off via `USE_PAGEINDEX_RUNTIME=false`). Router + rate_comparator are rule-based with Runnable wrappers for A2A uniformity; hidden_charge + summarizer make real LLM calls. End-to-end verified: Delhi→Rotterdam 200kg returns 10 ranked rates (Emirates SkyCargo wins on trust-adjusted total at $908.38) with a plain-English recommendation. Phase 2 + Phase 1 deliverables remain in place. Phases 4–6 (Streamlit UI, tests, deploy) remain.
+## Current state (2026-04-22)
+Phase 5 complete: **96 pytest tests across 10 test files** lock every phase's behaviour in. Coverage: `agents/` **100%** (all 4 agents + `__init__`), `pipeline.py` **100%**, `tools/cache.py` **94%**, `tools/validator.py` **94%**, `tools/pageindex_client.py` **97%**, `tools/scraper.py` **92%**, `tools/llm_router.py` **100%** — **96% aggregate** on the CLAUDE.md-mandated scope, every module >80% target. Shared `tests/conftest.py` exposes `FakeChatModel` (inherits LangChain `Runnable` so `_PROMPT | fake` composes natively) + `install_fake_llm` fixture; zero network I/O during the 2.25 s suite. CLAUDE.md-mandated smoke test `(electronics, 12 kg, 40×30×20 cm, Delhi, Rotterdam)` passes end-to-end against mocked LLMs with assertions on `ScoredRate` schema, mode, sort order, and cache-hit behaviour. Phase 4 UI (`app.py`), Phase 3 agents, Phase 2 scraper+cache, Phase 1 scaffold — all green. Phase 6 (deploy to Streamlit Cloud) remains.
 
 **Phase 2 + 3 notes:**
 - `LIVE_SCRAPING=false` is both default and production in v1. `LIVE_SCRAPING=true` raises `NotImplementedError` from `tools.scraper.fetch_site`.
@@ -18,6 +18,8 @@ Phase 3 complete: four LangChain 1.x `Runnable`-based agents (`agents/router.py`
 - Pipeline makes ~12 LLM calls per request (1 router + N hidden-charge + 1 summarizer, where N = scraped rate count). Worst-case ~6 s serial latency. Phase 5 optimisations: parallelise or batch hidden-charge.
 
 **Phase 5 backlog (non-blocking, surfaced by reviewers):**
+> **Status note (2026-04-22):** the Phase 5 test suite LOCKS current behaviour in. Items below describe bugs/polish to fix in a future "Phase 5.5 polish" commit — tests will need updating alongside each fix.
+
 - `tools/cache.py`: `clear_cache` has a redundant `_connect().close()` line that leaks on a failing reconnect — drop it; table is recreated lazily on next call.
 - `tools/cache.py`: error logs for unparseable `cached_at` / `rates_json` should include origin/destination in the `%s->%s` format used elsewhere.
 - `tools/scraper.py`: `_parse_days_from_text` reuses `_PRICE_RE` but doesn't strip commas; `"2,000 days"` raises `ValueError` (silently drops the row via the per-parser except). Use a dedicated `r"\d+"` or strip commas.
