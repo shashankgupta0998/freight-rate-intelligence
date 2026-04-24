@@ -16,8 +16,9 @@ knowledge_base/doc_registry.json
 *.db
 *.sqlite3
 
-# Streamlit Cloud export (regenerated from uv.lock; not source of truth)
-requirements.txt
+# requirements.txt is committed (Streamlit Cloud needs it in the repo).
+# It's derived from uv.lock via `uv export --no-hashes --no-emit-project`
+# — re-export and commit when deps change.
 
 # OS
 .DS_Store
