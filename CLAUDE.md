@@ -8,8 +8,10 @@ AI-powered web app: given product + gross weight + dimensions + origin + destina
 
 ---
 
-## Current state (2026-04-22)
-Phase 5 complete: **96 pytest tests across 10 test files** lock every phase's behaviour in. Coverage: `agents/` **100%** (all 4 agents + `__init__`), `pipeline.py` **100%**, `tools/cache.py` **94%**, `tools/validator.py` **94%**, `tools/pageindex_client.py` **97%**, `tools/scraper.py` **92%**, `tools/llm_router.py` **100%** — **96% aggregate** on the CLAUDE.md-mandated scope, every module >80% target. Shared `tests/conftest.py` exposes `FakeChatModel` (inherits LangChain `Runnable` so `_PROMPT | fake` composes natively) + `install_fake_llm` fixture; zero network I/O during the 2.25 s suite. CLAUDE.md-mandated smoke test `(electronics, 12 kg, 40×30×20 cm, Delhi, Rotterdam)` passes end-to-end against mocked LLMs with assertions on `ScoredRate` schema, mode, sort order, and cache-hit behaviour. Phase 4 UI (`app.py`), Phase 3 agents, Phase 2 scraper+cache, Phase 1 scaffold — all green. Phase 6 (deploy to Streamlit Cloud) remains.
+## Current state (2026-04-24)
+Phase 6 complete: **Live at https://freightit.streamlit.app/**. Streamlit Cloud auto-redeploys on `main` push.
+
+Phase 5: **96 pytest tests across 10 test files** lock every phase's behaviour in. Coverage: `agents/` **100%** (all 4 agents + `__init__`), `pipeline.py` **100%**, `tools/cache.py` **94%**, `tools/validator.py` **94%**, `tools/pageindex_client.py` **97%**, `tools/scraper.py` **92%**, `tools/llm_router.py` **100%** — **96% aggregate** on the CLAUDE.md-mandated scope, every module >80% target. Shared `tests/conftest.py` exposes `FakeChatModel` (inherits LangChain `Runnable` so `_PROMPT | fake` composes natively) + `install_fake_llm` fixture; zero network I/O during the 2.25 s suite. CLAUDE.md-mandated smoke test `(electronics, 12 kg, 40×30×20 cm, Delhi, Rotterdam)` passes end-to-end against mocked LLMs with assertions on `ScoredRate` schema, mode, sort order, and cache-hit behaviour. All 6 phases green.
 
 **Phase 2 + 3 notes:**
 - `LIVE_SCRAPING=false` is both default and production in v1. `LIVE_SCRAPING=true` raises `NotImplementedError` from `tools.scraper.fetch_site`.
@@ -80,8 +82,10 @@ uv run pytest --cov=agents --cov=tools --cov-report=term-missing   # coverage
 uv run ruff check . && uv run ruff format --check .
 uv run mypy agents tools
 
-# Before deploying to Streamlit Cloud (Streamlit still installs via pip)
-uv export --no-hashes > requirements.txt
+# Redeploy to Streamlit Cloud after dep changes
+uv export --no-hashes --no-emit-project --no-dev --output-file requirements.txt
+git commit -am "chore(deploy): refresh requirements.txt"
+git push origin main   # Streamlit Cloud auto-redeploys ~3 min
 ```
 
 ---
