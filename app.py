@@ -702,6 +702,28 @@ def _run_pipeline_and_store() -> None:
         urgency=st.session_state["urgency"],
     )
 
+    # Invalidate the pipeline cache when shipment inputs change.
+    # Background: pipeline.py's cache key is (origin, destination, date) — it
+    # doesn't include weight or urgency. Without this fingerprint check, a
+    # second submit with the same route but a new weight hits the stale cache
+    # and returns rates stamped with the FIRST run's chargeable_weight_kg.
+    # (CLAUDE.md Phase-5 backlog: "Cache key ... too coarse — ignores weight".)
+    fingerprint = (
+        shipment["origin"].lower(),
+        shipment["destination"].lower(),
+        round(shipment["chargeable_weight_kg"], 3),
+        shipment["urgency"],
+    )
+    last_fp = st.session_state.get("_last_shipment_fingerprint")
+    if last_fp is not None and last_fp != fingerprint:
+        from tools.cache import clear_cache
+        clear_cache()
+        logger.info(
+            "shipment inputs changed (%s -> %s) — cleared rate cache",
+            last_fp, fingerprint,
+        )
+    st.session_state["_last_shipment_fingerprint"] = fingerprint
+
     with st.status("Running rate intelligence...", expanded=True) as status:
         stages = [
             ("classifying_mode", "Classifying shipment mode..."),
