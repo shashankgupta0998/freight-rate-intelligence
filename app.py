@@ -553,7 +553,7 @@ def _render_sidebar() -> None:
                 <div class="fiq-stat-label">Agents</div>
               </div>
               <div class="fiq-stat">
-                <div class="fiq-stat-value">~6s</div>
+                <div class="fiq-stat-value">~2s</div>
                 <div class="fiq-stat-label">Analysis time</div>
               </div>
             </div>
