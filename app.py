@@ -660,7 +660,7 @@ def _render_form() -> None:
             type="primary",
             use_container_width=True,
         )
-        st.html('<div class="fiq-submit-meta">~6s analysis · ~12 LLM calls · 3 sources</div>')
+        st.html('<div class="fiq-submit-meta">~2s analysis · ~3 LLM calls · 3 sources</div>')
 
     if submitted:
         _run_pipeline_and_store()
