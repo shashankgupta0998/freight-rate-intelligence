@@ -185,9 +185,19 @@ _CSS = """
   --text-4: #323a4a;
 }
 
-html, body, [class*="st-"], .main {
+html, body, .main {
   font-family: 'Instrument Sans', system-ui, sans-serif !important;
   color: var(--text-1);
+}
+
+/* Preserve Streamlit's icon font on Material Symbols spans
+   (the [class*="st-"] override was masking the chevron in st.status,
+   making icon-ligature names like `arrow_right` leak as text). */
+[class*="material-symbols"],
+span[data-testid="stIconMaterial"],
+span[class*="MaterialIcon"] {
+  font-family: 'Material Symbols Outlined', 'Material Symbols Rounded',
+               'Material Symbols Sharp', 'Material Icons' !important;
 }
 
 h1, h2, h3, h4 {
