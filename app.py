@@ -175,7 +175,7 @@ _CSS = """
   --surface-3: #1c2029;
   --border: #ffffff0d;
   --border-md: #ffffff18;
-  --accent: #e8ff5a;
+  --accent: #22d3ee;
   --green: #2dd98b;
   --amber: #f5a623;
   --red: #f25353;
