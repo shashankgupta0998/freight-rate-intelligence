@@ -504,26 +504,20 @@ header[data-testid="stHeader"] { display: none; }
 
 def _render_sidebar() -> None:
     with st.sidebar:
-        st.markdown(
-            """
+        st.html("""
             <div class="fiq-brand">
               <div class="fiq-brand-icon">📦</div>
               <div class="fiq-brand-text">FreightIQ</div>
             </div>
             <div class="fiq-tagline">Rate intelligence</div>
-            """,
-            unsafe_allow_html=True,
-        )
+            """)
 
-        st.markdown(
-            "<p style='color:var(--text-2); font-size:13px; line-height:1.5;'>"
+        st.html("<p style='color:var(--text-2); font-size:13px; line-height:1.5;'>"
             "Enter a shipment and FreightIQ compares three freight aggregators, "
             "flags carriers that hide surcharges, and recommends the best-value "
-            "route for a small-business shipper.</p>",
-            unsafe_allow_html=True,
-        )
+            "route for a small-business shipper.</p>")
 
-        st.markdown('<div class="fiq-section-head">Try an example</div>', unsafe_allow_html=True)
+        st.html('<div class="fiq-section-head">Try an example</div>')
         for i, ex in enumerate(EXAMPLES):
             st.button(
                 ex["label"],
@@ -533,9 +527,8 @@ def _render_sidebar() -> None:
                 use_container_width=True,
             )
 
-        st.markdown('<div class="fiq-section-head">Coverage</div>', unsafe_allow_html=True)
-        st.markdown(
-            """
+        st.html('<div class="fiq-section-head">Coverage</div>')
+        st.html("""
             <div class="fiq-stats">
               <div class="fiq-stat">
                 <div class="fiq-stat-value">3</div>
@@ -554,16 +547,11 @@ def _render_sidebar() -> None:
                 <div class="fiq-stat-label">Analysis time</div>
               </div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+            """)
 
-        st.markdown(
-            "<p style='color:var(--text-3); font-size:11px; line-height:1.5; margin-top:20px;'>"
+        st.html("<p style='color:var(--text-3); font-size:11px; line-height:1.5; margin-top:20px;'>"
             "Demo mode: rates are drawn from curated fixtures, not live aggregator data. "
-            "Always verify quotes with the booking site before confirming a shipment.</p>",
-            unsafe_allow_html=True,
-        )
+            "Always verify quotes with the booking site before confirming a shipment.</p>")
 
 
 # ---- Weight calc strip ----
@@ -580,8 +568,7 @@ def _render_weight_strip() -> dict[str, Any]:
         if weights["weight_basis"] == "volume"
         else "actual weight applies"
     )
-    st.markdown(
-        f"""
+    st.html(f"""
         <div class="fiq-weightstrip">
           <div>
             <div class="fiq-weight-label">Gross weight</div>
@@ -598,9 +585,7 @@ def _render_weight_strip() -> dict[str, Any]:
             <div class="fiq-weight-value">{weights["chargeable_weight_kg"]:.1f} kg</div>
           </div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        """)
     return weights
 
 
@@ -609,13 +594,10 @@ def _render_weight_strip() -> dict[str, Any]:
 def _render_form() -> None:
     """Render the two-part form: live weight inputs outside st.form + batched rest inside."""
 
-    st.markdown("<h2 style='margin-top:0;'>Shipment details</h2>", unsafe_allow_html=True)
+    st.html("<h2 style='margin-top:0;'>Shipment details</h2>")
 
     # Weight / dimensions — OUTSIDE st.form so they trigger reruns on change.
-    st.markdown(
-        '<div class="fiq-section-head">Weight &amp; dimensions</div>',
-        unsafe_allow_html=True,
-    )
+    st.html('<div class="fiq-section-head">Weight &amp; dimensions</div>')
     col_gw, col_l, col_w, col_h = st.columns([1.2, 1, 1, 1])
     with col_gw:
         st.number_input(
@@ -637,10 +619,7 @@ def _render_form() -> None:
 
     # Batched form — cargo, route, submit.
     with st.form("shipment_form", clear_on_submit=False):
-        st.markdown(
-            '<div class="fiq-section-head">Cargo &amp; service</div>',
-            unsafe_allow_html=True,
-        )
+        st.html('<div class="fiq-section-head">Cargo &amp; service</div>')
         c1, c2 = st.columns(2)
         with c1:
             st.text_input(
@@ -655,10 +634,7 @@ def _render_form() -> None:
                 key="urgency",
             )
 
-        st.markdown(
-            '<div class="fiq-section-head">Route</div>',
-            unsafe_allow_html=True,
-        )
+        st.html('<div class="fiq-section-head">Route</div>')
         r1, r2 = st.columns(2)
         with r1:
             st.text_input("Origin", key="origin", placeholder="e.g. Delhi")
@@ -674,10 +650,7 @@ def _render_form() -> None:
             type="primary",
             use_container_width=True,
         )
-        st.markdown(
-            '<div class="fiq-submit-meta">~6s analysis · ~12 LLM calls · 3 sources</div>',
-            unsafe_allow_html=True,
-        )
+        st.html('<div class="fiq-submit-meta">~6s analysis · ~12 LLM calls · 3 sources</div>')
 
     if submitted:
         _run_pipeline_and_store()
@@ -850,7 +823,7 @@ def _render_rate_card(rate: dict[str, Any], rank: int) -> None:
             '<span style="color:var(--text-4); font-size:13px;">Do not book</span>'
         )
 
-    st.markdown(
+    st.html(
         f"""
         <div class="{card_class}">
           <div class="fiq-card-head">
@@ -902,21 +875,17 @@ def _render_rate_card(rate: dict[str, Any], rank: int) -> None:
             <span>{book_button_html}</span>
           </div>
         </div>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
 def _render_recommendation_panel(text: str) -> None:
-    st.markdown(
-        f"""
+    st.html(f"""
         <div class="fiq-reco">
           <div class="fiq-reco-head">★ AI Recommendation</div>
           <div class="fiq-reco-body">{_html_escape(text)}</div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        """)
 
 
 def _render_how_calculated(result: RecommendationResult) -> None:
@@ -960,10 +929,7 @@ Cache hit: {result.get("cache_hit", False)}.
 def _render_results() -> None:
     err = st.session_state.get("error")
     if err:
-        st.markdown(
-            f'<div class="fiq-error"><strong>Can\'t run yet.</strong> {_html_escape(err)}</div>',
-            unsafe_allow_html=True,
-        )
+        st.html(f'<div class="fiq-error"><strong>Can\'t run yet.</strong> {_html_escape(err)}</div>')
 
     result: RecommendationResult | None = st.session_state.get("result")
     if not result:
@@ -971,10 +937,9 @@ def _render_results() -> None:
 
     rates = result.get("rates", [])
     if not rates:
-        st.markdown(
+        st.html(
             f'<div class="fiq-error"><strong>No rates returned.</strong> '
-            f'{_html_escape(result.get("recommendation", ""))}</div>',
-            unsafe_allow_html=True,
+            f'{_html_escape(result.get("recommendation", ""))}</div>'
         )
         return
 
@@ -982,20 +947,18 @@ def _render_results() -> None:
     if result.get("recommendation"):
         _render_recommendation_panel(result["recommendation"])
 
-    st.markdown(
-        f'<div class="fiq-section-head">Ranked quotes ({len(rates)})</div>',
-        unsafe_allow_html=True,
+    st.html(
+        f'<div class="fiq-section-head">Ranked quotes ({len(rates)})</div>'
     )
     for i, rate in enumerate(rates, 1):
         _render_rate_card(rate, i)
 
     # Show pipeline error summary (partial failures) below cards, non-fatal.
     if result.get("errors"):
-        st.markdown(
+        st.html(
             f"<p style='color:var(--amber); font-size:12px;'>"
             f"{len(result['errors'])} per-rate warning(s): "
-            f"{_html_escape('; '.join(result['errors']))}</p>",
-            unsafe_allow_html=True,
+            f"{_html_escape('; '.join(result['errors']))}</p>"
         )
 
     _render_how_calculated(result)
@@ -1019,12 +982,9 @@ def main() -> None:
     _init_state()
     _render_sidebar()
 
-    st.markdown(
-        "<h1 style='margin-bottom:0.2em;'>Freight rate intelligence</h1>"
+    st.html("<h1 style='margin-bottom:0.2em;'>Freight rate intelligence</h1>"
         f"<div style='color:var(--text-2); font-size:14px; margin-bottom:22px;'>"
-        f"{_html_escape(TAGLINE)}</div>",
-        unsafe_allow_html=True,
-    )
+        f"{_html_escape(TAGLINE)}</div>")
 
     _render_form()
     _render_results()
