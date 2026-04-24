@@ -58,7 +58,7 @@ def run_pipeline(
     stage marker at each pipeline phase:
       - "classifying_mode"            (before router.invoke)
       - "scraping"                    (before cache check / scrape)
-      - "hidden_charge:{i}/{total}"   (after each hidden-charge invoke)
+      - "hidden_charge"               (before the single batched LLM call)
       - "ranking"                     (before rate_comparator.invoke)
       - "writing_recommendation"      (before summarizer.invoke)
       - "done"                        (just before return)
@@ -96,33 +96,32 @@ def run_pipeline(
             )
     sites_succeeded = len({r["source_site"] for r in scraped})
 
-    # Step 4: Hidden-charge scoring per rate
+    # Step 4: Hidden-charge scoring -- single batched LLM call for all rates.
+    notify("hidden_charge")
     hidden_charge = build_hidden_charge_agent()
     partial_scored: list[dict] = []
-    total = len(scraped)
-    for i, rate in enumerate(scraped, 1):
-        notify(f"hidden_charge:{i}/{total}")
+    if scraped:
         try:
-            result = hidden_charge.invoke({
+            batch_results = hidden_charge.invoke({
                 "input": {
-                    "rate": rate,
+                    "rates": scraped,
                     "mode": route["mode"],
-                    "card_html": rate.get("_card_html", ""),
                     "origin": shipment_input["origin"],
                     "destination": shipment_input["destination"],
                 }
             })
-            scored = {**rate, **result}
-            scored.pop("_card_html", None)
-            partial_scored.append(scored)
+            if len(batch_results) != len(scraped):
+                logger.warning(
+                    "hidden-charge batch length mismatch: %d results for %d rates",
+                    len(batch_results), len(scraped),
+                )
+            for rate, score in zip(scraped, batch_results):
+                scored = {**rate, **score}
+                scored.pop("_card_html", None)
+                partial_scored.append(scored)
         except Exception as e:
-            logger.error(
-                "hidden-charge failed on %s/%s: %s",
-                rate.get("source_site"), rate.get("carrier"), e,
-            )
-            errors.append(
-                f"hidden-charge failed on {rate.get('carrier')}: {e}"
-            )
+            logger.error("hidden-charge batch failed: %s", e)
+            errors.append(f"hidden-charge batch failed: {e}")
 
     # Step 5: Rate-comparator
     notify("ranking")

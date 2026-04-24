@@ -16,6 +16,7 @@ import pytest
 from pydantic import ValidationError
 
 from agents.hidden_charge import (
+    BatchHiddenChargeOutput,
     HiddenChargeOutput,
     build_hidden_charge_agent,
 )
@@ -33,7 +34,7 @@ from agents.summarizer import (
     _format_rates_table,
     build_summarizer_agent,
 )
-from tests.conftest import FakeChatModel, SHIPMENT_200KG
+from tests.conftest import FakeChatModel, SHIPMENT_200KG, batch_hc_stub
 
 
 # ------------------------- Router -------------------------
@@ -79,20 +80,22 @@ def test_router_agent_accepts_bare_payload(install_fake_llm):
 
 # ------------------------- Hidden-charge -------------------------
 
-def _hidden_charge_input(
-    booking_url: str = "https://ship.freightos.com/book/LH-1",
-    card_html: str = "<li>...</li>",
+def _batch_input(
+    rates: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    """Build a batched hidden-charge input. Defaults to a single Lufthansa rate."""
+    if rates is None:
+        rates = [{
+            "carrier": "Lufthansa Cargo",
+            "base_price_usd": 892.0,
+            "booking_url": "https://ship.freightos.com/book/LH-1",
+            "source_site": "freightos",
+            "_card_html": "<li>...</li>",
+        }]
     return {
         "input": {
-            "rate": {
-                "carrier": "Lufthansa Cargo",
-                "base_price_usd": 892.0,
-                "booking_url": booking_url,
-                "source_site": "freightos",
-            },
+            "rates": rates,
             "mode": "air_freight",
-            "card_html": card_html,
             "origin": "Delhi",
             "destination": "Rotterdam",
         }
@@ -114,38 +117,100 @@ def test_hidden_charge_short_circuits_flagged_site(
     # FakeChatModel with NO stubs — raises if LLM invoked (proves short-circuit).
     install_fake_llm("hidden_charge", {})
 
-    out = build_hidden_charge_agent().invoke(
-        _hidden_charge_input(booking_url="https://scammer.example.com/book/1")
-    )
-    assert out == {
+    out = build_hidden_charge_agent().invoke(_batch_input([{
+        "carrier": "Scammy Freight",
+        "base_price_usd": 100.0,
+        "booking_url": "https://scammer.example.com/book/1",
+        "source_site": "scammer",
+    }]))
+    assert out == [{
         "trust_score": 0,
         "flags": ["Site is flagged as deceptive"],
         "verified_site": False,
-    }
+    }]
 
 
 def test_hidden_charge_scores_well_itemised_card(install_fake_llm):
     install_fake_llm(
         "hidden_charge",
-        {HiddenChargeOutput: HiddenChargeOutput(trust_score=85, flags=[])},
+        {BatchHiddenChargeOutput: batch_hc_stub(trust_score=85, flags=[])},
     )
-    out = build_hidden_charge_agent().invoke(_hidden_charge_input())
-    assert out == {
+    out = build_hidden_charge_agent().invoke(_batch_input())
+    assert out == [{
         "trust_score": 85,
         "flags": [],
         "verified_site": True,
-    }
+    }]
+
+
+def test_hidden_charge_batch_scores_each_rate(install_fake_llm):
+    install_fake_llm(
+        "hidden_charge",
+        {BatchHiddenChargeOutput: batch_hc_stub(trust_score=75, flags=[])},
+    )
+    rates = [
+        {
+            "carrier": f"Carrier-{i}",
+            "base_price_usd": 100.0 * (i + 1),
+            "booking_url": f"https://ship.freightos.com/book/{i}",
+            "source_site": "freightos",
+            "_card_html": f"<li>rate-{i}</li>",
+        }
+        for i in range(4)
+    ]
+    out = build_hidden_charge_agent().invoke(_batch_input(rates))
+    assert len(out) == 4
+    for entry in out:
+        assert entry == {"trust_score": 75, "flags": [], "verified_site": True}
+
+
+def test_hidden_charge_batch_preserves_order_with_mixed_sites(install_fake_llm):
+    """Flagged + non-flagged rates mixed -- output order must match input order."""
+    install_fake_llm(
+        "hidden_charge",
+        {BatchHiddenChargeOutput: batch_hc_stub(trust_score=70, flags=[])},
+    )
+    rates = [
+        {
+            "carrier": "Good-A",
+            "booking_url": "https://ship.freightos.com/a",
+            "source_site": "freightos",
+            "_card_html": "<li>a</li>",
+        },
+        {
+            "carrier": "Unknown-B",
+            "booking_url": "https://random.example.net/b",
+            "source_site": "random",
+            "_card_html": "<li>b</li>",
+        },
+        {
+            "carrier": "Good-C",
+            "booking_url": "https://ship.freightos.com/c",
+            "source_site": "freightos",
+            "_card_html": "<li>c</li>",
+        },
+    ]
+    out = build_hidden_charge_agent().invoke(_batch_input(rates))
+    assert len(out) == 3
+    assert out[0]["verified_site"] is True
+    assert out[1]["verified_site"] is False
+    assert out[2]["verified_site"] is True
+    assert all(r["trust_score"] == 70 for r in out)
 
 
 def test_hidden_charge_verified_false_for_unknown_domain(install_fake_llm):
     install_fake_llm(
         "hidden_charge",
-        {HiddenChargeOutput: HiddenChargeOutput(trust_score=60, flags=[])},
+        {BatchHiddenChargeOutput: batch_hc_stub(trust_score=60, flags=[])},
     )
-    out = build_hidden_charge_agent().invoke(
-        _hidden_charge_input(booking_url="https://random.example.net/x")
-    )
-    assert out["verified_site"] is False
+    out = build_hidden_charge_agent().invoke(_batch_input([{
+        "carrier": "Mystery Air",
+        "base_price_usd": 500.0,
+        "booking_url": "https://random.example.net/x",
+        "source_site": "random",
+        "_card_html": "<li>...</li>",
+    }]))
+    assert out[0]["verified_site"] is False
 
 
 def test_hidden_charge_rag_off_does_not_call_pageindex(
@@ -153,7 +218,7 @@ def test_hidden_charge_rag_off_does_not_call_pageindex(
 ):
     install_fake_llm(
         "hidden_charge",
-        {HiddenChargeOutput: HiddenChargeOutput(trust_score=80, flags=[])},
+        {BatchHiddenChargeOutput: batch_hc_stub(trust_score=80, flags=[])},
     )
     # Autouse fixture already sets USE_PAGEINDEX_RUNTIME=false.
     sentinel = {"called": False}
@@ -163,14 +228,17 @@ def test_hidden_charge_rag_off_does_not_call_pageindex(
         return None
 
     monkeypatch.setattr("agents.hidden_charge.query_pageindex", guard)
-    build_hidden_charge_agent().invoke(_hidden_charge_input())
+    build_hidden_charge_agent().invoke(_batch_input())
     assert sentinel["called"] is False
 
 
-def test_hidden_charge_rag_on_calls_pageindex(install_fake_llm, monkeypatch):
+def test_hidden_charge_rag_on_calls_pageindex_once_per_batch(
+    install_fake_llm, monkeypatch
+):
+    """Even with N rates in a batch, PageIndex is queried exactly once."""
     install_fake_llm(
         "hidden_charge",
-        {HiddenChargeOutput: HiddenChargeOutput(trust_score=70, flags=[])},
+        {BatchHiddenChargeOutput: batch_hc_stub(trust_score=70, flags=[])},
     )
     monkeypatch.setenv("USE_PAGEINDEX_RUNTIME", "true")
     calls: list[tuple[str, str]] = []
@@ -185,7 +253,16 @@ def test_hidden_charge_rag_on_calls_pageindex(install_fake_llm, monkeypatch):
         lambda fn: "pi-test-id" if fn == "surcharge_bulletin.pdf" else None,
     )
 
-    build_hidden_charge_agent().invoke(_hidden_charge_input())
+    rates = [
+        {
+            "carrier": f"C-{i}",
+            "booking_url": f"https://ship.freightos.com/{i}",
+            "source_site": "freightos",
+            "_card_html": f"<li>{i}</li>",
+        }
+        for i in range(5)
+    ]
+    build_hidden_charge_agent().invoke(_batch_input(rates))
     assert len(calls) == 1
     assert calls[0][0] == "pi-test-id"
 
@@ -195,24 +272,78 @@ def test_hidden_charge_degrades_when_doc_id_missing(
 ):
     install_fake_llm(
         "hidden_charge",
-        {HiddenChargeOutput: HiddenChargeOutput(trust_score=70, flags=[])},
+        {BatchHiddenChargeOutput: batch_hc_stub(trust_score=70, flags=[])},
     )
     monkeypatch.setenv("USE_PAGEINDEX_RUNTIME", "true")
     monkeypatch.setattr("agents.hidden_charge.doc_id_for", lambda fn: None)
     # Should NOT raise — agent proceeds without RAG context.
-    out = build_hidden_charge_agent().invoke(_hidden_charge_input())
-    assert out["trust_score"] == 70
+    out = build_hidden_charge_agent().invoke(_batch_input())
+    assert out[0]["trust_score"] == 70
 
 
 def test_hidden_charge_handles_missing_booking_url(install_fake_llm):
     install_fake_llm(
         "hidden_charge",
-        {HiddenChargeOutput: HiddenChargeOutput(trust_score=60, flags=[])},
+        {BatchHiddenChargeOutput: batch_hc_stub(trust_score=60, flags=[])},
     )
-    payload = _hidden_charge_input()
-    del payload["input"]["rate"]["booking_url"]
+    payload = _batch_input()
+    del payload["input"]["rates"][0]["booking_url"]
     out = build_hidden_charge_agent().invoke(payload)
-    assert out["verified_site"] is False
+    assert out[0]["verified_site"] is False
+
+
+def test_hidden_charge_empty_rates_returns_empty_list(install_fake_llm):
+    # No LLM stub needed — empty input must short-circuit before LLM.
+    install_fake_llm("hidden_charge", {})
+    out = build_hidden_charge_agent().invoke({
+        "input": {
+            "rates": [],
+            "mode": "air_freight",
+            "origin": "Delhi",
+            "destination": "Rotterdam",
+        }
+    })
+    assert out == []
+
+
+def test_hidden_charge_llm_failure_falls_back_to_defaults(monkeypatch):
+    """If the batched LLM call raises, every non-flagged rate gets a
+    neutral default score rather than the whole batch being dropped."""
+    from langchain_core.runnables import Runnable
+
+    class ExplodingStructured(Runnable):
+        def invoke(self, input, config=None, **kwargs):
+            raise RuntimeError("LLM outage")
+
+    class ExplodingFake:
+        def with_structured_output(self, schema):
+            return ExplodingStructured()
+
+    monkeypatch.setattr(
+        "agents.hidden_charge.get_llm",
+        lambda temperature=0.2: ExplodingFake(),
+    )
+
+    rates = [
+        {
+            "carrier": "A",
+            "booking_url": "https://ship.freightos.com/a",
+            "source_site": "freightos",
+            "_card_html": "<li>a</li>",
+        },
+        {
+            "carrier": "B",
+            "booking_url": "https://ship.freightos.com/b",
+            "source_site": "freightos",
+            "_card_html": "<li>b</li>",
+        },
+    ]
+    out = build_hidden_charge_agent().invoke(_batch_input(rates))
+    assert len(out) == 2
+    for entry in out:
+        assert entry["trust_score"] == 50
+        assert entry["flags"] == ["Automated scoring unavailable"]
+        assert entry["verified_site"] is True
 
 
 def test_hidden_charge_output_pydantic_rejects_trust_over_100():

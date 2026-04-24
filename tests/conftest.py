@@ -2,7 +2,10 @@
 
 Key pieces:
 - FakeChatModel: drop-in LangChain Runnable replacement for ChatLiteLLM,
-  mapping Pydantic output Schema -> pre-built instance.
+  mapping Pydantic output Schema -> pre-built instance OR a callable that
+  takes the formatted prompt value and returns a Pydantic instance (used
+  by the batched hidden-charge agent, whose response length depends on
+  the number of rate blocks in the prompt).
 - install_fake_llm fixture: patches the *agent module's* get_llm binding
   (not tools.llm_router's) so the per-module import reference is replaced.
 - isolated_cache_db: tmp SQLite redirection via CACHE_DB_PATH env.
@@ -14,23 +17,31 @@ Key pieces:
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable, Union
 
 import pytest
 from langchain_core.runnables import Runnable
 from pydantic import BaseModel
 
 
+# Each response may be a pre-built instance OR a callable that receives
+# the prompt value passed to structured.invoke() and returns an instance.
+FakeResponse = Union[BaseModel, Callable[[Any], BaseModel]]
+
+
 # ---- FakeChatModel ----
 
 class _FakeStructured(Runnable):
     """Returned by FakeChatModel.with_structured_output(Schema).
-    .invoke(any_input) -> the pre-set Pydantic instance."""
+    .invoke(prompt_value) -> the pre-set Pydantic instance, or the result
+    of calling the stub callable with the prompt value."""
 
-    def __init__(self, response: BaseModel):
+    def __init__(self, response: FakeResponse):
         self._response = response
 
     def invoke(self, input: Any, config: Any = None, **kwargs: Any) -> BaseModel:
+        if callable(self._response):
+            return self._response(input)
         return self._response
 
 
@@ -44,7 +55,7 @@ class FakeChatModel(Runnable):
         result = chain.invoke(inputs)  # -> Schema instance
     """
 
-    def __init__(self, structured_responses: dict[type[BaseModel], BaseModel]):
+    def __init__(self, structured_responses: dict[type[BaseModel], FakeResponse]):
         self._responses = structured_responses
 
     def with_structured_output(self, schema: type[BaseModel]) -> _FakeStructured:
@@ -60,6 +71,33 @@ class FakeChatModel(Runnable):
             "FakeChatModel.invoke() must not be called without "
             "with_structured_output(Schema) first."
         )
+
+
+def batch_hc_stub(trust_score: int = 85, flags: list[str] | None = None):
+    """Build a callable stub that returns a BatchHiddenChargeOutput sized
+    to match the number of '=== Rate ' blocks in the formatted prompt.
+
+    Every non-flagged rate in a batch gets the same (trust_score, flags).
+    Tests that need per-rate variation can construct their own callable.
+    """
+    from agents.hidden_charge import (
+        BatchHiddenChargeOutput,
+        HiddenChargeOutput,
+    )
+
+    _flags = list(flags) if flags is not None else []
+
+    def _stub(prompt_value: Any) -> BatchHiddenChargeOutput:
+        text = str(prompt_value)
+        n = text.count("=== Rate ")
+        return BatchHiddenChargeOutput(
+            results=[
+                HiddenChargeOutput(trust_score=trust_score, flags=list(_flags))
+                for _ in range(max(n, 1))
+            ],
+        )
+
+    return _stub
 
 
 # ---- Fixtures ----
@@ -156,9 +194,12 @@ def _install_all_fakes(install_fake_llm) -> None:
 
     Used by pipeline + smoke tests so each test doesn't repeat 3 install
     calls. Pipeline test callers use: `_install_all_fakes(install_fake_llm)`.
+
+    The hidden_charge stub is batched (single call per run) and returns
+    one HiddenChargeOutput per '=== Rate ' block in the formatted prompt.
     """
     from agents.router import RouterOutput
-    from agents.hidden_charge import HiddenChargeOutput
+    from agents.hidden_charge import BatchHiddenChargeOutput
     from agents.summarizer import SummarizerOutput
 
     install_fake_llm("router", {
@@ -167,7 +208,7 @@ def _install_all_fakes(install_fake_llm) -> None:
         )
     })
     install_fake_llm("hidden_charge", {
-        HiddenChargeOutput: HiddenChargeOutput(trust_score=85, flags=[])
+        BatchHiddenChargeOutput: batch_hc_stub(trust_score=85, flags=[]),
     })
     install_fake_llm("summarizer", {
         SummarizerOutput: SummarizerOutput(

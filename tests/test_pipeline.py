@@ -1,11 +1,11 @@
 """Integration tests for pipeline.py — mocked LLMs + real scraper + isolated cache."""
 from __future__ import annotations
 
-from agents.hidden_charge import HiddenChargeOutput
+from agents.hidden_charge import BatchHiddenChargeOutput
 from agents.router import RouterOutput
 from agents.summarizer import SummarizerOutput
 from pipeline import run_pipeline
-from tests.conftest import SHIPMENT_200KG, _install_all_fakes
+from tests.conftest import SHIPMENT_200KG, _install_all_fakes, batch_hc_stub
 
 
 def test_run_pipeline_happy_path(install_fake_llm, isolated_cache_db):
@@ -49,35 +49,27 @@ def test_run_pipeline_on_progress_fires_in_order(install_fake_llm, isolated_cach
 
     assert markers[0] == "classifying_mode"
     assert markers[1] == "scraping"
-    hc = [m for m in markers if m.startswith("hidden_charge:")]
-    assert len(hc) == 10
-    assert hc[0] == "hidden_charge:1/10"
-    assert hc[-1] == "hidden_charge:10/10"
+    # Post Phase-5.5 batching: a single "hidden_charge" marker, not per-rate.
+    hc = [m for m in markers if m == "hidden_charge"]
+    assert len(hc) == 1
     assert "ranking" in markers
     assert "writing_recommendation" in markers
     assert markers[-1] == "done"
 
 
-def test_run_pipeline_per_rate_failure_captured(
+def test_run_pipeline_batch_failure_captured(
     install_fake_llm, isolated_cache_db, monkeypatch
 ):
+    """If the batched hidden-charge agent itself raises, pipeline captures
+    the error and returns a diagnostic recommendation (no rates to rank)."""
     install_fake_llm("router", {RouterOutput: RouterOutput(reason="x")})
     install_fake_llm("summarizer", {
         SummarizerOutput: SummarizerOutput(recommendation="ok"),
     })
 
-    # Hidden-charge that raises for one specific carrier.
-    from agents.hidden_charge import build_hidden_charge_agent as real_builder
-
-    call_count = {"n": 0}
-
     class BrittleAgent:
         def invoke(self, payload):
-            call_count["n"] += 1
-            rate = payload["input"]["rate"]
-            if rate.get("carrier") == "MSC":
-                raise RuntimeError("brittle MSC test failure")
-            return {"trust_score": 80, "flags": [], "verified_site": True}
+            raise RuntimeError("brittle batch failure")
 
     monkeypatch.setattr(
         "pipeline.build_hidden_charge_agent",
@@ -85,11 +77,10 @@ def test_run_pipeline_per_rate_failure_captured(
     )
 
     result = run_pipeline(SHIPMENT_200KG)
-    assert len(result["rates"]) == 9  # 10 scraped, 1 dropped
+    assert result["rates"] == []
     assert len(result["errors"]) == 1
-    assert "MSC" in result["errors"][0]
-    # Pipeline still produced a recommendation
-    assert result["recommendation"] == "ok"
+    assert "hidden-charge batch failed" in result["errors"][0]
+    assert "No rate quotes available" in result["recommendation"]
 
 
 def test_run_pipeline_empty_scrape_returns_diagnostic(
@@ -109,7 +100,7 @@ def test_run_pipeline_summarizer_failure_degrades(
 ):
     install_fake_llm("router", {RouterOutput: RouterOutput(reason="x")})
     install_fake_llm("hidden_charge", {
-        HiddenChargeOutput: HiddenChargeOutput(trust_score=85, flags=[]),
+        BatchHiddenChargeOutput: batch_hc_stub(trust_score=85, flags=[]),
     })
 
     class BrokenSummarizer:
