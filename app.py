@@ -795,6 +795,7 @@ def _run_pipeline_and_store() -> None:
 
 def _render_rate_card(rate: dict[str, Any], rank: int) -> None:
     trust = int(rate.get("trust_score", 0))
+    confidence = rate.get("confidence", "high")
     label = _best_value_label(rank, trust)
     band_label, band_colour, band_emoji = _trust_band(trust)
     is_best = (rank == 1 and trust >= 80)
@@ -835,8 +836,41 @@ def _render_rate_card(rate: dict[str, Any], rank: int) -> None:
         f'<div class="fiq-flags">{"".join(flag_html_parts)}</div>' if flags else ""
     )
 
+    if confidence == "unclear":
+        trust_bar_html = f"""
+          <div style="background:var(--surface-2); border:1px solid var(--border);
+                      border-radius:8px; padding:8px 12px; text-align:center;">
+            <span style="color:var(--text-3); font-size:12px; font-weight:600;">
+              Insufficient data — score is estimated
+            </span>
+            <div style="color:var(--text-4); font-size:10px; margin-top:2px;">
+              Trust score: {trust}/100
+            </div>
+          </div>
+        """
+    else:
+        low_conf_note = (
+            ' <span style="color:var(--text-4); font-size:10px;">(low confidence)</span>'
+            if confidence == "low" else ""
+        )
+        trust_bar_html = f"""
+          <div>
+            <div class="fiq-trustbar-track">
+              <div class="fiq-trustbar-fill" style="width:{max(0, min(100, trust))}%; background:{band_colour};"></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; color:var(--text-3); font-size:11px; margin-top:4px;">
+              <span>Trust score</span>
+              <span><strong style="color:{band_colour};">{trust}</strong> / 100 · {band_label}{low_conf_note}</span>
+            </div>
+          </div>
+        """
+
     book_button_html = ""
-    if trust >= 80:
+    if confidence == "unclear":
+        book_button_html = (
+            '<span style="color:var(--text-4); font-size:13px;">Insufficient data</span>'
+        )
+    elif trust >= 80:
         book_button_html = (
             f'<a href="{_html_escape(rate.get("booking_url", "#"))}" target="_blank" '
             f'style="background:var(--accent); color:#06070a; font-weight:700; '
@@ -892,15 +926,7 @@ def _render_rate_card(rate: dict[str, Any], rank: int) -> None:
               <div class="fiq-metric-sub">as quoted</div>
             </div>
           </div>
-          <div>
-            <div class="fiq-trustbar-track">
-              <div class="fiq-trustbar-fill" style="width:{max(0, min(100, trust))}%; background:{band_colour};"></div>
-            </div>
-            <div style="display:flex; justify-content:space-between; color:var(--text-3); font-size:11px; margin-top:4px;">
-              <span>Trust score</span>
-              <span><strong style="color:{band_colour};">{trust}</strong> / 100 · {band_label}</span>
-            </div>
-          </div>
+          {trust_bar_html}
           {flags_block}
           <div class="fiq-card-foot">
             <span>{_html_escape(rate.get("source_site", "?"))} · {band_label.lower()}</span>
@@ -922,6 +948,18 @@ def _render_recommendation_panel(text: str) -> None:
 
 def _render_how_calculated(result: RecommendationResult) -> None:
     with st.expander("How this analysis was calculated"):
+        shipment = result.get("shipment_input")
+        if shipment:
+            st.markdown(
+                f"""**Your inputs**
+- Product: {shipment.get("product", "?")}
+- Gross weight: {shipment.get("gross_weight_kg", 0):.1f} kg
+- Volume weight: {shipment.get("volume_weight_kg", 0):.1f} kg
+- Chargeable weight: {shipment.get("chargeable_weight_kg", 0):.1f} kg ({shipment.get("weight_basis", "?")})
+- Route: {shipment.get("origin", "?")} → {shipment.get("destination", "?")}
+- Urgency: {shipment.get("urgency", "standard")}
+"""
+            )
         st.markdown(
             f"""
 **1. Chargeable weight**
@@ -952,7 +990,7 @@ Cache hit: {result.get("cache_hit", False)}.
 
 **5. LLM pipeline**
 - Groq `llama-3.3-70b-versatile` (primary) with OpenAI → Gemini fallback
-- {1 + len(result.get("rates", [])) + 1} LLM calls this run
+- 3 LLM calls per search (1 router + 1 batched hidden-charge + 1 summarizer)
 - Structured output enforced via Pydantic schemas per agent
 """
         )
@@ -985,13 +1023,25 @@ def _render_results() -> None:
     for i, rate in enumerate(rates, 1):
         _render_rate_card(rate, i)
 
-    # Show pipeline error summary (partial failures) below cards, non-fatal.
     if result.get("errors"):
-        st.html(
-            f"<p style='color:var(--amber); font-size:12px;'>"
-            f"{len(result['errors'])} per-rate warning(s): "
-            f"{_html_escape('; '.join(result['errors']))}</p>"
+        error_stages = [e.get("stage", "unknown") for e in result["errors"] if isinstance(e, dict)]
+        has_transient = any(
+            isinstance(e, dict) and e.get("error_category") == "transient"
+            for e in result["errors"]
         )
+        if has_transient:
+            st.warning("Some rate sources were temporarily unavailable. Results may be incomplete.")
+        elif "hidden_charge" in error_stages:
+            st.warning("Automated trust scoring was unavailable for some rates. Flagged rates are marked.")
+        else:
+            st.warning(f"{len(result['errors'])} warning(s) during analysis.")
+
+        with st.expander("Technical details"):
+            for err in result["errors"]:
+                if isinstance(err, dict):
+                    st.text(f"Stage: {err.get('stage', '?')} | Category: {err.get('error_category', '?')} | Retryable: {err.get('is_retryable', '?')}")
+                else:
+                    st.text(str(err))
 
     _render_how_calculated(result)
 
