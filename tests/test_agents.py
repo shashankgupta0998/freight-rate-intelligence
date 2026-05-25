@@ -521,6 +521,21 @@ def test_summarizer_handles_empty_ranked_rates(install_fake_llm):
     assert out == {"recommendation": "No rates."}
 
 
+def test_summarizer_output_rejects_empty_string():
+    with pytest.raises(ValidationError):
+        SummarizerOutput(recommendation="")
+
+
+def test_summarizer_output_rejects_overlong_string():
+    with pytest.raises(ValidationError):
+        SummarizerOutput(recommendation="x" * 2001)
+
+
+def test_summarizer_output_accepts_valid_length():
+    out = SummarizerOutput(recommendation="Book the cheapest option.")
+    assert out.recommendation == "Book the cheapest option."
+
+
 def test_summarizer_uses_temperature_0_5(monkeypatch):
     captured: dict[str, float] = {}
 

@@ -20,6 +20,8 @@ logger = logging.getLogger("agent.summarizer")
 
 class SummarizerOutput(BaseModel):
     recommendation: str = Field(
+        min_length=1,
+        max_length=2000,
         description=(
             "3-4 sentence plain-English recommendation for a small business "
             "owner: which quote to book, why it is the best value, and one "

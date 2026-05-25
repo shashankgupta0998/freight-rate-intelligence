@@ -42,7 +42,8 @@ class RouterOutput(BaseModel):
 _PROMPT = ChatPromptTemplate.from_messages([
     ("system",
      "You advise small business owners on freight logistics. "
-     "Be concise and plain-spoken."),
+     "Write exactly one sentence. State the freight mode, the "
+     "chargeable weight, and why it crossed the threshold."),
     ("human",
      "Shipment: product={product}, chargeable_weight={weight} kg, "
      "origin={origin}, destination={destination}.\n"
