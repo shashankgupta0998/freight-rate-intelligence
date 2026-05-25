@@ -10,6 +10,7 @@ from agents.hidden_charge import (
     build_hidden_charge_agent,
 )
 from tests.conftest import batch_hc_stub
+from tools.errors import ToolResult
 
 
 def _rag_payload(n: int = 1) -> dict:
@@ -46,7 +47,7 @@ def test_rag_on_invokes_pageindex_with_mode_and_route(
 
     def spy(doc_id, question, timeout=10.0):
         calls.append((doc_id, question))
-        return "surcharge info"
+        return ToolResult(status="ok", data="surcharge info")
 
     monkeypatch.setattr("agents.hidden_charge.query_pageindex", spy)
     monkeypatch.setattr(
@@ -88,7 +89,7 @@ def test_rag_query_format_mentions_mode(install_fake_llm, monkeypatch):
     captured: list[str] = []
     monkeypatch.setattr(
         "agents.hidden_charge.query_pageindex",
-        lambda doc_id, question, timeout=10.0: captured.append(question) or "x",
+        lambda doc_id, question, timeout=10.0: captured.append(question) or ToolResult(status="ok", data="x"),
     )
     monkeypatch.setattr(
         "agents.hidden_charge.doc_id_for",
@@ -122,7 +123,7 @@ def test_rag_pageindex_failure_degrades(install_fake_llm, monkeypatch):
     )
     monkeypatch.setattr(
         "agents.hidden_charge.query_pageindex",
-        lambda *a, **k: None,  # network-like failure
+        lambda *a, **k: ToolResult(status="error", is_error=True, detail="network failure"),
     )
     out = build_hidden_charge_agent().invoke(_rag_payload())
     assert out[0]["trust_score"] == 70
@@ -139,7 +140,7 @@ def test_rag_on_queried_only_once_per_batch(install_fake_llm, monkeypatch):
 
     def spy(doc_id, question, timeout=10.0):
         call_count["n"] += 1
-        return "surcharge info"
+        return ToolResult(status="ok", data="surcharge info")
 
     monkeypatch.setattr("agents.hidden_charge.query_pageindex", spy)
     monkeypatch.setattr(
