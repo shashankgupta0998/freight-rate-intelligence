@@ -19,20 +19,7 @@ Phase 5: **96 pytest tests across 10 test files** lock every phase's behaviour i
 - Cache key is `(origin, destination, query_date)` per CLAUDE.md — known to be too coarse (ignores weight + mode); acceptable for single-route demo, tighten to `(origin, destination, date, mode, weight_bucket)` when multi-route support lands.
 - Pipeline makes ~3 LLM calls per request (1 router + 1 batched hidden-charge + 1 summarizer). Phase 5.5 batched hidden-charge into a single LLM call (was N serial calls). Expected latency ~2 s.
 
-**Phase 5 backlog (non-blocking, surfaced by reviewers):**
-> **Status note (2026-04-22):** the Phase 5 test suite LOCKS current behaviour in. Items below describe bugs/polish to fix in a future "Phase 5.5 polish" commit — tests will need updating alongside each fix.
-
-- `tools/cache.py`: `clear_cache` has a redundant `_connect().close()` line that leaks on a failing reconnect — drop it; table is recreated lazily on next call.
-- `tools/cache.py`: error logs for unparseable `cached_at` / `rates_json` should include origin/destination in the `%s->%s` format used elsewhere.
-- `tools/scraper.py`: `_parse_days_from_text` reuses `_PRICE_RE` but doesn't strip commas; `"2,000 days"` raises `ValueError` (silently drops the row via the per-parser except). Use a dedicated `r"\d+"` or strip commas.
-- `tools/scraper.py`: `Query.origin` / `destination` / `mode` are unused in v1 (reserved for live mode) — document with a one-line note or defer trimming until live mode is wired.
-- ~~`pipeline.py`: hidden-charge LLM calls are serial (~0.5s × N rates). Parallelise via `ThreadPoolExecutor` or batch all N cards into one LLM call for ~3× latency reduction.~~ **Done (Phase 5.5):** batched into single LLM call.
-- `agents/rate_comparator.py`: no LLM call; the `Runnable` wrapper is pure A2A ceremony. If A2A never ships, collapse to a plain function.
-- `agents/summarizer.py`: `payload["shipment"]` is an unguarded `[]` access while `router_reason` / `ranked_rates` use `.get(default)` — inconsistent. Either make all three defaults-based or raise a typed error.
-- `agents/summarizer.py`: no length guard on `recommendation`; a 10KB LLM response is schema-valid but blows up the Streamlit card. Consider `Field(max_length=2000)` or log a warning over N chars.
-- `agents/summarizer.py`: empty-string `recommendation` silently accepted; use `Field(min_length=1)` or fall back to canned message.
-- `agents/summarizer.py`: output isn't streamed; Phase 4 Streamlit can add streaming if UX demands.
-- `agents/summarizer.py`: optional `query_pageindex(incoterms_doc_id, ...)` call for Incoterms-aware advice — hook exists in design, not wired.
+**Phase 5 backlog:** see `.claude/skills/freight-backlog/SKILL.md` for known bugs and polish items.
 
 > **Source of truth:** where CLAUDE.md and `freight-rate-intelligence-PRD.md` diverge, CLAUDE.md wins. Notably, the LLM fallback chain (Groq → OpenAI → Gemini) supersedes the PRD's Groq-only spec.
 
