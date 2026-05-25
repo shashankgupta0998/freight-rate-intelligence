@@ -28,6 +28,7 @@ from agents import (
     build_summarizer_agent,
 )
 from tools.cache import get_cached, put_cache
+from tools.errors import ErrorCategory, PipelineError
 from tools.scraper import Query, scrape_all
 
 logger = logging.getLogger("pipeline")
@@ -40,7 +41,8 @@ class RecommendationResult(TypedDict):
     recommendation: str
     cache_hit: bool
     sites_succeeded: int
-    errors: list[str]
+    errors: list[dict]
+    shipment_input: dict
 
 
 def _noop(_stage: str) -> None:
@@ -65,7 +67,7 @@ def run_pipeline(
     Default None => no-op (CLI / tests / A2A unchanged).
     """
     notify = on_progress or _noop
-    errors: list[str] = []
+    errors: list[dict] = []
 
     # Step 1: Router
     notify("classifying_mode")
@@ -122,12 +124,21 @@ def run_pipeline(
                 partial_scored.append(scored)
         except Exception as e:
             logger.error("hidden-charge batch failed: %s", e)
-            errors.append(f"hidden-charge batch failed: {e}")
+            errors.append(PipelineError(
+                stage="hidden_charge",
+                error_category=ErrorCategory.TRANSIENT,
+                is_retryable=True,
+                detail=str(e),
+            ).model_dump())
 
     # Step 5: Rate-comparator
     notify("ranking")
     comparator = build_rate_comparator_agent()
     ranked = comparator.invoke({"input": partial_scored})
+
+    for rate in ranked:
+        if rate.get("trust_score", 0) < 50:
+            rate["booking_url"] = ""
 
     # Step 6: Summarizer
     if not ranked:
@@ -143,6 +154,7 @@ def run_pipeline(
             "cache_hit": cache_hit,
             "sites_succeeded": sites_succeeded,
             "errors": errors,
+            "shipment_input": shipment_input,
         }
 
     notify("writing_recommendation")
@@ -156,7 +168,12 @@ def run_pipeline(
         recommendation = summary["recommendation"]
     except Exception as e:
         logger.error("summarizer failed: %s", e)
-        errors.append(f"summarizer failed: {e}")
+        errors.append(PipelineError(
+            stage="summarizer",
+            error_category=ErrorCategory.TRANSIENT,
+            is_retryable=True,
+            detail=str(e),
+        ).model_dump())
         recommendation = ""
 
     notify("done")
@@ -168,4 +185,5 @@ def run_pipeline(
         "cache_hit": cache_hit,
         "sites_succeeded": sites_succeeded,
         "errors": errors,
+        "shipment_input": shipment_input,
     }

@@ -80,7 +80,7 @@ def test_run_pipeline_batch_failure_captured(
     result = run_pipeline(SHIPMENT_200KG)
     assert result["rates"] == []
     assert len(result["errors"]) == 1
-    assert "hidden-charge batch failed" in result["errors"][0]
+    assert result["errors"][0]["stage"] == "hidden_charge"
     assert "No rate quotes available" in result["recommendation"]
 
 
@@ -119,7 +119,7 @@ def test_run_pipeline_summarizer_failure_degrades(
     result = run_pipeline(SHIPMENT_200KG)
     assert result["recommendation"] == ""
     assert len(result["errors"]) == 1
-    assert "summarizer" in result["errors"][0]
+    assert result["errors"][0]["stage"] == "summarizer"
     # Rates still returned
     assert len(result["rates"]) == 10
 
@@ -135,3 +135,47 @@ def test_run_pipeline_strips_card_html(install_fake_llm, isolated_cache_db):
     result = run_pipeline(SHIPMENT_200KG)
     for r in result["rates"]:
         assert "_card_html" not in r
+
+
+def test_run_pipeline_errors_are_structured_dicts(
+    install_fake_llm, isolated_cache_db, monkeypatch
+):
+    install_fake_llm("router", {RouterOutput: RouterOutput(reason="x")})
+    install_fake_llm("summarizer", {
+        SummarizerOutput: SummarizerOutput(recommendation="ok"),
+    })
+
+    class BrittleAgent:
+        def invoke(self, payload):
+            raise RuntimeError("brittle batch failure")
+
+    monkeypatch.setattr(
+        "pipeline.build_hidden_charge_agent", lambda: BrittleAgent(),
+    )
+    result = run_pipeline(SHIPMENT_200KG)
+    assert len(result["errors"]) == 1
+    err = result["errors"][0]
+    assert err["stage"] == "hidden_charge"
+    assert err["error_category"] == "transient"
+    assert err["is_retryable"] is True
+
+
+def test_run_pipeline_echoes_shipment_input(install_fake_llm, isolated_cache_db):
+    _install_all_fakes(install_fake_llm)
+    result = run_pipeline(SHIPMENT_200KG)
+    assert result["shipment_input"] == SHIPMENT_200KG
+
+
+def test_run_pipeline_strips_booking_url_for_low_trust(
+    install_fake_llm, isolated_cache_db
+):
+    install_fake_llm("router", {RouterOutput: RouterOutput(reason="x")})
+    install_fake_llm("hidden_charge", {
+        BatchHiddenChargeOutput: batch_hc_stub(trust_score=30, flags=["sketchy"]),
+    })
+    install_fake_llm("summarizer", {
+        SummarizerOutput: SummarizerOutput(recommendation="caution"),
+    })
+    result = run_pipeline(SHIPMENT_200KG)
+    for rate in result["rates"]:
+        assert rate["booking_url"] == "", f"booking_url not stripped for trust={rate['trust_score']}"

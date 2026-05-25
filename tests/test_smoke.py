@@ -33,6 +33,7 @@ def test_smoke_delhi_rotterdam_12kg_completes_end_to_end(
 
     assert result["mode"] == "courier"
     assert result["errors"] == []
+    assert result["shipment_input"] == CLAUDE_MD_SMOKE_SHIPMENT
     for r in result["rates"]:
         missing = SCORED_RATE_KEYS - r.keys()
         assert not missing, f"rate missing keys {missing}: {r.get('carrier')}"
