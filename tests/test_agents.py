@@ -383,6 +383,35 @@ def test_hidden_charge_confidence_defaults_to_high(install_fake_llm):
     assert out[0]["confidence"] == "high"
 
 
+def test_hidden_charge_retries_on_validation_error(monkeypatch):
+    """First LLM call returns bad output, second succeeds."""
+    from langchain_core.runnables import Runnable
+
+    call_count = {"n": 0}
+
+    class RetryStructured(Runnable):
+        def invoke(self, input, config=None, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise ValueError("Invalid output: missing trust_score")
+            return BatchHiddenChargeOutput(
+                results=[HiddenChargeOutput(trust_score=70, flags=[], confidence="high")],
+            )
+
+    class RetryFake:
+        def with_structured_output(self, schema):
+            return RetryStructured()
+
+    monkeypatch.setattr(
+        "agents.hidden_charge.get_llm",
+        lambda temperature=0.2: RetryFake(),
+    )
+
+    out = build_hidden_charge_agent().invoke(_batch_input())
+    assert call_count["n"] == 2
+    assert out[0]["trust_score"] == 70
+
+
 # ------------------------- Rate-comparator -------------------------
 
 def test_compute_estimated_total_anchor_points():

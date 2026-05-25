@@ -211,20 +211,32 @@ class _HiddenChargeRunnable(Runnable):
             llm = get_llm(temperature=0.2)
             structured = llm.with_structured_output(BatchHiddenChargeOutput)
             chain = _PROMPT | structured
-            try:
-                batch: BatchHiddenChargeOutput = chain.invoke({
-                    "origin": origin,
-                    "destination": destination,
-                    "mode": mode,
-                    "red_flags": "\n".join(f"- {f}" for f in red_flags),
-                    "rag_context": rag_context,
-                    "n": len(to_score),
-                    "rate_blocks": rate_blocks,
-                })
-                llm_results = list(batch.results)
-            except Exception as e:
-                logger.error("hidden-charge batch LLM failed: %s", e)
-                llm_failed = True
+            prompt_vars = {
+                "origin": origin,
+                "destination": destination,
+                "mode": mode,
+                "red_flags": "\n".join(f"- {f}" for f in red_flags),
+                "rag_context": rag_context,
+                "n": len(to_score),
+                "rate_blocks": rate_blocks,
+            }
+            for attempt in range(3):
+                try:
+                    batch = chain.invoke(prompt_vars)
+                    llm_results = list(batch.results)
+                    break
+                except Exception as e:
+                    if attempt == 2:
+                        logger.error("hidden-charge batch LLM failed after 3 attempts: %s", e)
+                        llm_failed = True
+                        break
+                    logger.warning(
+                        "hidden-charge parse failed (attempt %d): %s", attempt + 1, e,
+                    )
+                    prompt_vars["rate_blocks"] += (
+                        f"\n\n[RETRY: Previous response failed validation: {e}. "
+                        f"Ensure output matches the schema exactly.]"
+                    )
 
         # Step 3: align LLM results with to_score order; pad with defaults.
         for local_idx, (global_idx, rate) in enumerate(to_score):
