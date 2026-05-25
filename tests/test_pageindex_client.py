@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import requests
 
+from tools.errors import ErrorCategory
+
 
 def test_is_enabled_default_false(monkeypatch):
     monkeypatch.delenv("USE_PAGEINDEX_RUNTIME", raising=False)
@@ -35,26 +37,24 @@ def test_query_pageindex_success(monkeypatch):
         status_code = 200
         text = ""
         def json(self):
-            return {
-                "choices": [{"message": {"content": "fuel surcharge 18-32%"}}]
-            }
+            return {"choices": [{"message": {"content": "fuel surcharge 18-32%"}}]}
 
-    def fake_post(url, headers=None, json=None, timeout=None):
-        return FakeResponse()
-
-    monkeypatch.setattr(pageindex_client.requests, "post", fake_post)
+    monkeypatch.setattr(pageindex_client.requests, "post", lambda *a, **k: FakeResponse())
     monkeypatch.setenv("PAGEINDEX_API_KEY", "test-key-abc")
     result = pageindex_client.query_pageindex("pi-any", "What are surcharges?")
-    assert result == "fuel surcharge 18-32%"
+    assert result.status == "ok"
+    assert result.data == "fuel surcharge 18-32%"
 
 
 def test_query_pageindex_missing_api_key(monkeypatch):
     monkeypatch.delenv("PAGEINDEX_API_KEY", raising=False)
     from tools.pageindex_client import query_pageindex
-    assert query_pageindex("pi-any", "Q?") is None
+    result = query_pageindex("pi-any", "Q?")
+    assert result.status == "error"
+    assert result.error_category == ErrorCategory.PERMISSION
 
 
-def test_query_pageindex_non_2xx_returns_none(monkeypatch):
+def test_query_pageindex_non_2xx(monkeypatch):
     from tools import pageindex_client
 
     class FakeResponse:
@@ -62,16 +62,15 @@ def test_query_pageindex_non_2xx_returns_none(monkeypatch):
         status_code = 500
         text = "internal error"
 
-    monkeypatch.setattr(
-        pageindex_client.requests,
-        "post",
-        lambda *a, **k: FakeResponse(),
-    )
+    monkeypatch.setattr(pageindex_client.requests, "post", lambda *a, **k: FakeResponse())
     monkeypatch.setenv("PAGEINDEX_API_KEY", "test-key")
-    assert pageindex_client.query_pageindex("pi-any", "Q?") is None
+    result = pageindex_client.query_pageindex("pi-any", "Q?")
+    assert result.status == "error"
+    assert result.error_category == ErrorCategory.TRANSIENT
+    assert result.is_retryable is True
 
 
-def test_query_pageindex_network_error_returns_none(monkeypatch):
+def test_query_pageindex_network_error(monkeypatch):
     from tools import pageindex_client
 
     def boom(*args, **kwargs):
@@ -79,10 +78,12 @@ def test_query_pageindex_network_error_returns_none(monkeypatch):
 
     monkeypatch.setattr(pageindex_client.requests, "post", boom)
     monkeypatch.setenv("PAGEINDEX_API_KEY", "test-key")
-    assert pageindex_client.query_pageindex("pi-any", "Q?") is None
+    result = pageindex_client.query_pageindex("pi-any", "Q?")
+    assert result.status == "error"
+    assert result.error_category == ErrorCategory.TRANSIENT
 
 
-def test_query_pageindex_malformed_body_returns_none(monkeypatch):
+def test_query_pageindex_malformed_body(monkeypatch):
     from tools import pageindex_client
 
     class FakeResponse:
@@ -90,12 +91,10 @@ def test_query_pageindex_malformed_body_returns_none(monkeypatch):
         status_code = 200
         text = "{}"
         def json(self):
-            return {}  # no "choices" key
+            return {}
 
-    monkeypatch.setattr(
-        pageindex_client.requests,
-        "post",
-        lambda *a, **k: FakeResponse(),
-    )
+    monkeypatch.setattr(pageindex_client.requests, "post", lambda *a, **k: FakeResponse())
     monkeypatch.setenv("PAGEINDEX_API_KEY", "test-key")
-    assert pageindex_client.query_pageindex("pi-any", "Q?") is None
+    result = pageindex_client.query_pageindex("pi-any", "Q?")
+    assert result.status == "error"
+    assert result.error_category == ErrorCategory.BUSINESS

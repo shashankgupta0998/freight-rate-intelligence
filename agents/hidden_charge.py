@@ -116,12 +116,12 @@ def _gather_rag_context(mode: str, origin: str, destination: str) -> str:
         f"shipment from {origin} to {destination}? "
         "List each fee name and typical amount."
     )
-    answer = query_pageindex(doc_id, question)
-    if not answer:
+    result = query_pageindex(doc_id, question)
+    if result.is_error or not result.data:
         return ""
     return (
         "Additional context from surcharge bulletin:\n"
-        f"```\n{answer}\n```\n\n"
+        f"```\n{result.data}\n```\n\n"
     )
 
 

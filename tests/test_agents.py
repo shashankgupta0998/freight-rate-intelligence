@@ -15,6 +15,8 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from tools.errors import ToolResult
+
 from agents.hidden_charge import (
     BatchHiddenChargeOutput,
     HiddenChargeOutput,
@@ -245,7 +247,7 @@ def test_hidden_charge_rag_on_calls_pageindex_once_per_batch(
 
     def spy(doc_id, question, timeout=10.0):
         calls.append((doc_id, question))
-        return "fuel surcharge 18-32%"
+        return ToolResult(status="ok", data="fuel surcharge 18-32%")
 
     monkeypatch.setattr("agents.hidden_charge.query_pageindex", spy)
     monkeypatch.setattr(
