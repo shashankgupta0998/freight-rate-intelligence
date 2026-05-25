@@ -1,4 +1,4 @@
-"""SQLite-backed rate cache with 6h TTL.
+"""SQLite-backed rate cache with 6h TTL, returning structured ToolResult.
 
 Key: (origin, destination, query_date). Value: JSON-serialised list[ScrapedRate].
 Expiry is read-time (no background eviction). Upsert semantics on writes.
@@ -14,6 +14,8 @@ import os
 import sqlite3
 from datetime import date, datetime, timezone
 from pathlib import Path
+
+from tools.errors import ErrorCategory, ToolResult
 
 logger = logging.getLogger("cache")
 
@@ -53,22 +55,27 @@ def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def get_cached(
-    origin: str, destination: str, query_date: date
-) -> list[dict] | None:
-    """Return cached rates or None on miss/expiry/corruption.
+def get_cached(origin: str, destination: str, query_date: date) -> ToolResult:
+    """Return a ToolResult describing the cache lookup outcome.
 
-    Miss conditions:
-      - no matching row
-      - row exists but age > TTL_SECONDS
-      - cached_at or rates_json is unparseable
+    Status values:
+      - "hit"     : row found, TTL valid, rates parsed successfully
+      - "miss"    : no matching row
+      - "expired" : row found but age > TTL_SECONDS
+      - "error"   : DB connection failure or unparseable data
     """
     key = (origin, destination, query_date.isoformat())
     try:
         conn = _connect()
     except sqlite3.DatabaseError as e:
-        logger.error("DB connect failed: %s", e)
-        return None
+        logger.error("DB connect failed for %s->%s: %s", origin, destination, e)
+        return ToolResult(
+            status="error",
+            is_error=True,
+            error_category=ErrorCategory.TRANSIENT,
+            is_retryable=True,
+            detail=str(e),
+        )
     try:
         row = conn.execute(
             "SELECT rates_json, cached_at FROM rate_cache "
@@ -77,36 +84,53 @@ def get_cached(
         ).fetchone()
     finally:
         conn.close()
+
     if row is None:
         logger.info("MISS %s->%s %s (not cached)", origin, destination, key[2])
-        return None
+        return ToolResult(status="miss")
+
     rates_json, cached_at_str = row
     try:
         cached_at = datetime.fromisoformat(cached_at_str)
     except ValueError:
         logger.error(
-            "cached_at unparseable: %r -- treating as miss", cached_at_str
+            "cached_at unparseable for %s->%s: %r -- treating as error",
+            origin,
+            destination,
+            cached_at_str,
         )
-        return None
+        return ToolResult(
+            status="error",
+            is_error=True,
+            error_category=ErrorCategory.VALIDATION,
+            detail=f"unparseable cached_at: {cached_at_str!r}",
+        )
+
     age = _now_utc() - cached_at
     if age.total_seconds() > TTL_SECONDS:
         logger.info(
-            "EXPIRED %s->%s %s (aged %s)",
-            origin,
-            destination,
-            key[2],
-            age,
+            "EXPIRED %s->%s %s (aged %s)", origin, destination, key[2], age
         )
-        return None
+        return ToolResult(status="expired")
+
     try:
         rates = json.loads(rates_json)
     except json.JSONDecodeError as e:
-        logger.error("rates_json unparseable: %s -- treating as miss", e)
-        return None
-    logger.info(
-        "HIT %s->%s %s (aged %s)", origin, destination, key[2], age
-    )
-    return rates
+        logger.error(
+            "rates_json unparseable for %s->%s: %s -- treating as error",
+            origin,
+            destination,
+            e,
+        )
+        return ToolResult(
+            status="error",
+            is_error=True,
+            error_category=ErrorCategory.VALIDATION,
+            detail=f"unparseable rates_json: {e}",
+        )
+
+    logger.info("HIT %s->%s %s (aged %s)", origin, destination, key[2], age)
+    return ToolResult(status="hit", data=rates)
 
 
 def put_cache(
@@ -128,22 +152,19 @@ def put_cache(
     finally:
         conn.close()
     logger.info(
-        "PUT %s->%s %s (%d rates)",
-        origin,
-        destination,
-        key[2],
-        len(rates),
+        "PUT %s->%s %s (%d rates)", origin, destination, key[2], len(rates)
     )
 
 
 def clear_cache() -> None:
-    """Drop and recreate the rate_cache table. For dev + future tests."""
+    """Drop and recreate the rate_cache table. For dev + tests."""
     conn = _connect()
     try:
         conn.execute("DROP TABLE IF EXISTS rate_cache")
         conn.commit()
     finally:
         conn.close()
-    # Re-create the table via a fresh connection
-    _connect().close()
+    # Re-create the table via a fresh connection (avoids leaking on reconnect failure)
+    conn2 = _connect()
+    conn2.close()
     logger.info("CLEAR rate_cache dropped and recreated")
