@@ -75,19 +75,20 @@ def run_pipeline(
     # Steps 2 & 3: Cache then scrape
     notify("scraping")
     today = date.today()
-    cached = get_cached(
+    cache_result = get_cached(
         shipment_input["origin"], shipment_input["destination"], today
     )
-    cache_hit = cached is not None
+    cache_hit = cache_result.status == "hit"
     if cache_hit:
-        scraped = cached
+        scraped = cache_result.data
     else:
-        scraped = scrape_all(Query(
+        scraper_result = scrape_all(Query(
             origin=shipment_input["origin"],
             destination=shipment_input["destination"],
             chargeable_weight_kg=shipment_input["chargeable_weight_kg"],
             mode=route["mode"],
         ))
+        scraped = scraper_result.data or []
         if scraped:
             put_cache(
                 shipment_input["origin"],

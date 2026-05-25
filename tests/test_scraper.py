@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from tools.errors import ErrorCategory, ScraperResult
 from tools.scraper import (
     FIXTURE_DIR,
     Query,
@@ -134,39 +135,38 @@ def test_parse_duration_days_valid_and_invalid():
 # ---- Aggregator + Fetcher ----
 
 def test_scrape_all_returns_ten_rates():
-    rates = scrape_all(Query("Delhi", "Rotterdam", 200.0))
-    assert len(rates) == 10
+    result = scrape_all(Query("Delhi", "Rotterdam", 200.0))
+    assert isinstance(result, ScraperResult)
+    assert result.status == "ok"
+    assert len(result.data) == 10
+    assert len(result.site_results) == 3
+    assert all(sr.status == "ok" for sr in result.site_results)
     required = {
-        "carrier",
-        "base_price_usd",
-        "chargeable_weight_kg",
-        "transit_days",
-        "booking_url",
-        "source_site",
-        "scraped_at",
-        "mode",
+        "carrier", "base_price_usd", "chargeable_weight_kg",
+        "transit_days", "booking_url", "source_site", "scraped_at", "mode",
     }
-    for r in rates:
+    for r in result.data:
         assert required <= r.keys()
 
 
 def test_scrape_all_continue_on_error(monkeypatch, caplog):
-    # Patch icontainers parser to raise — other sites must still return
     def boom(html):
         raise RuntimeError("simulated parser failure")
 
     from tools import scraper
-
-    # Dataclass fields are frozen — so monkeypatch the whole SiteConfig
     from dataclasses import replace
 
     patched_site = replace(scraper.SITES["icontainers"], parser=boom)
     monkeypatch.setitem(scraper.SITES, "icontainers", patched_site)
 
-    rates = scrape_all(Query("Delhi", "Rotterdam", 200.0))
-    # freightos (4) + searates (3) = 7
-    assert len(rates) == 7
-    assert not any(r["source_site"] == "icontainers" for r in rates)
+    result = scrape_all(Query("Delhi", "Rotterdam", 200.0))
+    assert result.status == "ok"
+    assert len(result.data) == 7
+    assert not any(r["source_site"] == "icontainers" for r in result.data)
+    failed = [sr for sr in result.site_results if sr.status == "error"]
+    assert len(failed) == 1
+    assert failed[0].site == "icontainers"
+    assert failed[0].error_category == ErrorCategory.TRANSIENT
 
 
 def test_fetch_site_live_scraping_raises(monkeypatch):

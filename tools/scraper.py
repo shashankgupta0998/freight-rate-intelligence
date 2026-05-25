@@ -18,6 +18,8 @@ from typing import Callable
 
 from bs4 import BeautifulSoup
 
+from tools.errors import ErrorCategory, ScraperResult, SiteResult
+
 logger = logging.getLogger("scraper")
 
 FIXTURE_DIR = Path(__file__).parent.parent / "tests" / "fixtures"
@@ -222,13 +224,14 @@ def fetch_site(site_name: str, query: Query) -> str:
 
 # ---- Aggregator ----
 
-def scrape_all(query: Query) -> list[dict]:
+def scrape_all(query: Query) -> ScraperResult:
     """Run every configured site, concatenating parsed ScrapedRate dicts.
 
     Per-site failures are logged at WARNING and skipped; other sites continue.
-    Returns [] only if every site fails.
+    Returns a ScraperResult with status="error" only if every site fails.
     """
     results: list[dict] = []
+    site_results: list[SiteResult] = []
     successes = 0
     for site_name, cfg in SITES.items():
         try:
@@ -241,14 +244,27 @@ def scrape_all(query: Query) -> list[dict]:
                 r["scraped_at"] = now
             results.extend(site_rates)
             successes += 1
+            site_results.append(SiteResult(
+                site=site_name, status="ok", rate_count=len(site_rates),
+            ))
             logger.info("%s -> %d rates", site_name, len(site_rates))
         except Exception as e:
             logger.warning("%s failed (%s), skipping", site_name, e)
             logger.debug("%s traceback", site_name, exc_info=True)
+            site_results.append(SiteResult(
+                site=site_name, status="error",
+                error_category=ErrorCategory.TRANSIENT,
+                is_retryable=True, detail=str(e),
+            ))
     logger.info(
         "scrape_all -> %d rates from %d/%d sites",
-        len(results),
-        successes,
-        len(SITES),
+        len(results), successes, len(SITES),
     )
-    return results
+    return ScraperResult(
+        status="ok" if successes > 0 else "error",
+        data=results,
+        is_error=successes == 0,
+        error_category=ErrorCategory.TRANSIENT if successes == 0 else None,
+        detail="" if successes > 0 else "all sites failed",
+        site_results=site_results,
+    )

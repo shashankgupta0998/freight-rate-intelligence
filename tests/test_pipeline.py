@@ -6,6 +6,7 @@ from agents.router import RouterOutput
 from agents.summarizer import SummarizerOutput
 from pipeline import run_pipeline
 from tests.conftest import SHIPMENT_200KG, _install_all_fakes, batch_hc_stub
+from tools.errors import ScraperResult
 
 
 def test_run_pipeline_happy_path(install_fake_llm, isolated_cache_db):
@@ -87,7 +88,10 @@ def test_run_pipeline_empty_scrape_returns_diagnostic(
     install_fake_llm, isolated_cache_db, monkeypatch
 ):
     install_fake_llm("router", {RouterOutput: RouterOutput(reason="x")})
-    monkeypatch.setattr("pipeline.scrape_all", lambda q: [])
+    monkeypatch.setattr(
+        "pipeline.scrape_all",
+        lambda q: ScraperResult(status="error", data=[], is_error=True, detail="all sites failed"),
+    )
 
     result = run_pipeline(SHIPMENT_200KG)
     assert result["rates"] == []
