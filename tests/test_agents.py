@@ -344,7 +344,7 @@ def test_hidden_charge_llm_failure_falls_back_to_defaults(monkeypatch):
     assert len(out) == 2
     for entry in out:
         assert entry["trust_score"] == 50
-        assert entry["flags"] == ["Automated scoring unavailable"]
+        assert entry["flags"] == ["Automated scoring unavailable — LLM error"]
         assert entry["verified_site"] is True
 
 

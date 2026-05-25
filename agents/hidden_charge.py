@@ -38,7 +38,8 @@ from tools.validator import is_flagged_site, is_verified_site, red_flags_for_mod
 
 logger = logging.getLogger("agent.hidden_charge")
 
-_DEFAULT_UNAVAILABLE_FLAG = "Automated scoring unavailable"
+_FLAG_LLM_FAILED = "Automated scoring unavailable — LLM error"
+_FLAG_INCOMPLETE = "Automated scoring unavailable — incomplete batch"
 
 
 class HiddenChargeOutput(BaseModel):
@@ -125,8 +126,12 @@ def _gather_rag_context(mode: str, origin: str, destination: str) -> str:
     )
 
 
-def _default_score() -> dict[str, Any]:
-    return {"trust_score": 50, "flags": [_DEFAULT_UNAVAILABLE_FLAG]}
+def _default_score_llm_failed() -> dict[str, Any]:
+    return {"trust_score": 50, "flags": [_FLAG_LLM_FAILED]}
+
+
+def _default_score_incomplete() -> dict[str, Any]:
+    return {"trust_score": 50, "flags": [_FLAG_INCOMPLETE]}
 
 
 class _HiddenChargeRunnable(Runnable):
@@ -200,14 +205,16 @@ class _HiddenChargeRunnable(Runnable):
                     "flags": list(r.flags),
                 }
             else:
-                if not llm_failed:
+                if llm_failed:
+                    score = _default_score_llm_failed()
+                else:
                     logger.warning(
                         "hidden-charge: no LLM result for rate %d (%s/%s), using default",
                         global_idx,
                         rate.get("source_site", "?"),
                         rate.get("carrier", "?"),
                     )
-                score = _default_score()
+                    score = _default_score_incomplete()
             outputs[global_idx] = {
                 **score,
                 "verified_site": is_verified_site(rate.get("booking_url", "")),
