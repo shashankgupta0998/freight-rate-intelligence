@@ -92,7 +92,7 @@ def batch_hc_stub(trust_score: int = 85, flags: list[str] | None = None):
         n = text.count("=== Rate ")
         return BatchHiddenChargeOutput(
             results=[
-                HiddenChargeOutput(trust_score=trust_score, flags=list(_flags))
+                HiddenChargeOutput(trust_score=trust_score, flags=list(_flags), confidence="high")
                 for _ in range(max(n, 1))
             ],
         )

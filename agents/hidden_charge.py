@@ -26,7 +26,7 @@ so the pipeline can still render rate cards.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
@@ -53,6 +53,15 @@ class HiddenChargeOutput(BaseModel):
         description=(
             "Plain-English warnings drawn from the provided red-flag patterns "
             "that this quote exhibits. Empty list if none apply."
+        ),
+    )
+    confidence: Literal["high", "low", "unclear"] = Field(
+        default="high",
+        description=(
+            "How confident the assessment is. 'unclear' when the rate card "
+            "lacks enough detail to meaningfully score — e.g., only a base "
+            "price with no line items at all. Do NOT guess when data is "
+            "insufficient."
         ),
     )
 
@@ -127,11 +136,11 @@ def _gather_rag_context(mode: str, origin: str, destination: str) -> str:
 
 
 def _default_score_llm_failed() -> dict[str, Any]:
-    return {"trust_score": 50, "flags": [_FLAG_LLM_FAILED]}
+    return {"trust_score": 50, "flags": [_FLAG_LLM_FAILED], "confidence": "low"}
 
 
 def _default_score_incomplete() -> dict[str, Any]:
-    return {"trust_score": 50, "flags": [_FLAG_INCOMPLETE]}
+    return {"trust_score": 50, "flags": [_FLAG_INCOMPLETE], "confidence": "low"}
 
 
 class _HiddenChargeRunnable(Runnable):
@@ -158,6 +167,7 @@ class _HiddenChargeRunnable(Runnable):
                     "trust_score": 0,
                     "flags": ["Site is flagged as deceptive"],
                     "verified_site": False,
+                    "confidence": "high",
                 }
             else:
                 to_score.append((i, rate))
@@ -203,6 +213,7 @@ class _HiddenChargeRunnable(Runnable):
                 score = {
                     "trust_score": int(r.trust_score),
                     "flags": list(r.flags),
+                    "confidence": r.confidence,
                 }
             else:
                 if llm_failed:

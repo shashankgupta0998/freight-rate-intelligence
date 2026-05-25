@@ -129,6 +129,7 @@ def test_hidden_charge_short_circuits_flagged_site(
         "trust_score": 0,
         "flags": ["Site is flagged as deceptive"],
         "verified_site": False,
+        "confidence": "high",
     }]
 
 
@@ -142,6 +143,7 @@ def test_hidden_charge_scores_well_itemised_card(install_fake_llm):
         "trust_score": 85,
         "flags": [],
         "verified_site": True,
+        "confidence": "high",
     }]
 
 
@@ -163,7 +165,7 @@ def test_hidden_charge_batch_scores_each_rate(install_fake_llm):
     out = build_hidden_charge_agent().invoke(_batch_input(rates))
     assert len(out) == 4
     for entry in out:
-        assert entry == {"trust_score": 75, "flags": [], "verified_site": True}
+        assert entry == {"trust_score": 75, "flags": [], "verified_site": True, "confidence": "high"}
 
 
 def test_hidden_charge_batch_preserves_order_with_mixed_sites(install_fake_llm):
@@ -352,6 +354,33 @@ def test_hidden_charge_output_pydantic_rejects_trust_over_100():
     # Instantiating out-of-range HiddenChargeOutput raises at fixture time.
     with pytest.raises(ValidationError):
         HiddenChargeOutput(trust_score=150, flags=[])
+
+
+def test_hidden_charge_output_includes_confidence(install_fake_llm):
+    from agents.hidden_charge import BatchHiddenChargeOutput, HiddenChargeOutput
+
+    def _stub_with_confidence(prompt_value):
+        text = str(prompt_value)
+        n = text.count("=== Rate ")
+        return BatchHiddenChargeOutput(
+            results=[
+                HiddenChargeOutput(trust_score=40, flags=[], confidence="unclear")
+                for _ in range(max(n, 1))
+            ],
+        )
+
+    install_fake_llm("hidden_charge", {BatchHiddenChargeOutput: _stub_with_confidence})
+    out = build_hidden_charge_agent().invoke(_batch_input())
+    assert out[0]["confidence"] == "unclear"
+
+
+def test_hidden_charge_confidence_defaults_to_high(install_fake_llm):
+    install_fake_llm(
+        "hidden_charge",
+        {BatchHiddenChargeOutput: batch_hc_stub(trust_score=85, flags=[])},
+    )
+    out = build_hidden_charge_agent().invoke(_batch_input())
+    assert out[0]["confidence"] == "high"
 
 
 # ------------------------- Rate-comparator -------------------------

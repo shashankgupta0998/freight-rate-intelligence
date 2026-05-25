@@ -22,6 +22,7 @@ SCORED_RATE_KEYS = {
     "flags",
     "estimated_total_usd",
     "verified_site",
+    "confidence",
 }
 
 

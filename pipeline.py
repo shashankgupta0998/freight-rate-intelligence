@@ -137,7 +137,7 @@ def run_pipeline(
     ranked = comparator.invoke({"input": partial_scored})
 
     for rate in ranked:
-        if rate.get("trust_score", 0) < 50:
+        if rate.get("trust_score", 0) < 50 or rate.get("confidence") == "unclear":
             rate["booking_url"] = ""
 
     # Step 6: Summarizer
